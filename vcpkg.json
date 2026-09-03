@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "aetherstream",
+  "version-semver": "2.2.0",
+  "description": "Dual-mode streaming float32 telemetry compression",
+  "homepage": "https://github.com/animish-sharma/aetherstream",
+  "license": "MIT",
+  "supports": "(windows & x64) | linux | osx",
+  "features": {
+    "native": {
+      "description": "Enable host-native SIMD optimization"
+    }
+  }
+}

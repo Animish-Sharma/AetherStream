@@ -1,0 +1,51 @@
+site_name: AetherStream
+site_description: Dual-mode streaming float32 telemetry compression
+site_url: https://animish-sharma.github.io/aetherstream/
+repo_url: https://github.com/animish-sharma/aetherstream
+repo_name: animish-sharma/aetherstream
+copyright: Copyright © 2026 AetherStream contributors
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+    - content.tabs.link
+
+nav:
+  - Home: index.md
+  - Installation: INSTALLATION.md
+  - API Reference: API_REFERENCE.md
+  - Wire Format: WIRE_FORMAT_SPEC.md
+  - Release Checklist: RELEASE_CHECKLIST.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+plugins:
+  - search
+strict: true

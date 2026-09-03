@@ -1,0 +1,112 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "pybind11>=2.10",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "aetherstream"
+version = "2.2.0"
+description = "Dual-mode streaming telemetry compression with strict error and wire-rate bounds"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Animish Sharma" }]
+keywords = ["compression", "telemetry", "seismic", "streaming", "rans", "simd"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C++",
+  "Programming Language :: C++ :: 20",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = ["numpy>=1.22"]
+
+[project.optional-dependencies]
+arrow = ["pyarrow>=14"]
+benchmark = ["matplotlib>=3.5", "zstandard>=0.21"]
+
+[project.urls]
+Homepage = "https://github.com/animish-sharma/aetherstream"
+Documentation = "https://animish-sharma.github.io/aetherstream/"
+Issues = "https://github.com/animish-sharma/aetherstream/issues"
+Source = "https://github.com/animish-sharma/aetherstream"
+
+[tool.scikit-build]
+cmake.version = ">=3.18"
+cmake.build-type = "Release"
+cmake.args = [
+  "-DAETHER_BUILD_PYTHON=ON",
+  "-DAETHER_BUILD_TESTS=OFF",
+  "-DAETHER_LIMIT_BUILD_PARALLELISM=ON",
+]
+wheel.packages = ["python/aetherstream"]
+sdist.inclusion-mode = "explicit"
+sdist.include = [
+  "pyproject.toml", "setup.py", "MANIFEST.in", "CMakeLists.txt", "cmake/**",
+  "include/**", "src/**", "python/**",
+  "LICENSE", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
+  "SECURITY.md", "CITATION.cff", "Dockerfile", "CMakePresets.json", ".clang-format",
+  ".gitattributes", "generate_assets.py",
+  "docs/**", "assets/**", "tests/**", "fuzz/**", "benchmarks/*.py", ".github/**",
+  "conda-recipe/**", "ports/**", "vcpkg.json", "requirements*.txt",
+]
+sdist.exclude = [
+  ".venv", "build", "build-*", "build-v2", "dist", "site", "install-package",
+  "benchmarks/data", "benchmarks/results", "__pycache__", ".pytest_cache",
+  "*.so", "*.png",
+]
+build-dir = "build/{wheel_tag}"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"generate_assets.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux_* pp*"
+test-requires = ["pytest", "numpy"]
+test-command = "pytest -q {project}/tests"
+environment = { AETHER_LOW_MEMORY = "1", CMAKE_BUILD_PARALLEL_LEVEL = "1" }
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

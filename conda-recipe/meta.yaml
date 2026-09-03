@@ -1,0 +1,55 @@
+{% set name = "aetherstream" %}
+{% set version = "2.2.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script_env:
+    - AETHER_LOW_MEMORY=1
+    - CMAKE_BUILD_PARALLEL_LEVEL=1
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - cmake >=3.18
+    - ninja
+    - python
+    - scikit-build-core >=0.10
+    - pybind11 >=2.10
+  host:
+    - python
+    - pip
+    - scikit-build-core >=0.10
+    - pybind11 >=2.10
+  run:
+    - python
+    - numpy >=1.22
+
+test:
+  imports:
+    - aether
+    - aetherstream
+  commands:
+    - python -c "import aetherstream as a; assert a.__version__ == '2.2.0'"
+
+about:
+  home: https://github.com/animish-sharma/aetherstream
+  license: MIT
+  license_file: LICENSE
+  summary: Dual-mode streaming float32 telemetry compression
+  description: |
+    AetherStream provides exact wire-rate and pointwise absolute-error modes,
+    ADSP prediction, rANS coding, incremental streams, and runtime SIMD dispatch.
+  dev_url: https://github.com/animish-sharma/aetherstream
+  doc_url: https://animish-sharma.github.io/aetherstream/
+
+extra:
+  recipe-maintainers:
+    - animish-sharma

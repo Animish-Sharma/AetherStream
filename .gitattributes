@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.svg text
+*.png binary
+*.npy binary
+/tests/corpus/* binary

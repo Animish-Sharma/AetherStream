@@ -1,0 +1,49 @@
+# CMake / native build artifacts
+build/
+build-*/
+install-package/
+site/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated benchmark output
+rate_distortion_curve.png
+v2_benchmark_results.png
+benchmarks/data/
+benchmarks/results/
+
+# Editor / OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Crash dumps
+core
+core.*

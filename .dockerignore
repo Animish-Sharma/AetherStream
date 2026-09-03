@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+build*
+dist
+*.egg-info
+__pycache__
+.pytest_cache
+.mypy_cache
+site
+install-package
+benchmarks/data
+benchmarks/results
+*.so
+*.png

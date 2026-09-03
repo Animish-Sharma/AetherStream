@@ -1,0 +1,5 @@
+numpy>=1.22
+pybind11>=2.10
+pytest>=7
+matplotlib>=3.5
+zstandard>=0.21

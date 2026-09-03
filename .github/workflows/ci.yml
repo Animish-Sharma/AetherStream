@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-24.04
+            cc: clang
+            cxx: clang++
+          - os: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+          - os: macos-15-intel
+            cc: clang
+            cxx: clang++
+          - os: macos-14
+            cc: clang
+            cxx: clang++
+          - os: windows-2022
+            cc: cl
+            cxx: cl
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      AETHER_PARALLEL_BUILD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip setuptools wheel
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pip install -e . --no-build-isolation
+      - run: python -c "import aetherstream as a; assert a.__version__ == '2.2.0'"
+      - name: Install optional Arrow test dependency
+        if: matrix.os == 'ubuntu-24.04' && matrix.cxx == 'g++'
+        run: python -m pip install "pyarrow>=14"
+      - run: python -m pytest -v tests
+      - name: Configure native tests
+        run: cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DAETHER_BUILD_TESTS=ON -DAETHER_BUILD_PYTHON=OFF
+      - run: cmake --build build-ci --parallel 1
+      - run: ctest --test-dir build-ci --output-on-failure
+      - name: Scalar parity
+        shell: bash
+        run: AETHER_SIMD=scalar ctest --test-dir build-ci --output-on-failure
+      - name: Verify installable CMake package
+        run: cmake --install build-ci --prefix install-ci
+
+  docs-and-style:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python generate_assets.py
+      - run: git diff --exit-code -- assets
+      - run: python -m ruff check benchmarks python generate_assets.py tests
+      - run: python -m black --check benchmarks python generate_assets.py tests
+      - run: python -m mypy benchmarks python generate_assets.py
+      - name: Install pinned C++ formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format-16
+      - name: Check C++ formatting
+        run: find include src tests fuzz -type f \( -name '*.hpp' -o -name '*.cpp' \) -print0 | xargs -0 clang-format-16 --dry-run --Werror
+      - run: mkdocs build --strict
+
+  sanitizers-and-fuzz:
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DAETHER_ENABLE_SANITIZERS=ON -DAETHER_BUILD_TESTS=ON -DAETHER_BUILD_PYTHON=OFF
+      - run: cmake --build build-asan --parallel 1
+      - run: ctest --test-dir build-asan --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      - run: cmake -S . -B build-fuzz -DCMAKE_CXX_COMPILER=clang++ -DAETHER_BUILD_FUZZERS=ON -DAETHER_BUILD_PYTHON=OFF
+      - run: cmake --build build-fuzz --parallel 1
+      - run: ./build-fuzz/fuzz/fuzz_decompress tests/corpus -max_total_time=60 -rss_limit_mb=1536

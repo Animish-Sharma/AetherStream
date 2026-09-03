@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: AetherStream
+message: If you use AetherStream in research, cite this software release.
+type: software
+authors:
+  - family-names: Sharma
+    given-names: Animish
+version: 2.2.0
+date-released: 2026-09-03
+license: MIT
+repository-code: https://github.com/animish-sharma/aetherstream
+url: https://github.com/animish-sharma/aetherstream
+keywords:
+  - telemetry compression
+  - rANS
+  - error bounded compression
+  - SIMD

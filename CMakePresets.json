@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "low-memory",
+      "displayName": "2GB-safe release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/low-memory",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AETHER_LOW_MEMORY": "ON",
+        "AETHER_LIMIT_BUILD_PARALLELISM": "ON",
+        "AETHER_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "native",
+      "displayName": "Host-native optimized release",
+      "inherits": "low-memory",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "AETHER_LOW_MEMORY": "OFF",
+        "AETHER_NATIVE_OPTIMIZED": "ON",
+        "AETHER_LIMIT_BUILD_PARALLELISM": "OFF"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan and UBSan",
+      "inherits": "low-memory",
+      "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AETHER_ENABLE_SANITIZERS": "ON",
+        "AETHER_BUILD_PYTHON": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "low-memory", "configurePreset": "low-memory", "jobs": 1 },
+    { "name": "native", "configurePreset": "native" },
+    { "name": "asan", "configurePreset": "asan", "jobs": 1 }
+  ],
+  "testPresets": [
+    { "name": "low-memory", "configurePreset": "low-memory", "output": { "outputOnFailure": true } },
+    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } }
+  ]
+}

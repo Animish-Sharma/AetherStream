@@ -1,0 +1,70 @@
+name: Bug report
+description: Report reproducible incorrect behavior, crashes, or regressions
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not disclose security vulnerabilities here; use the private process in SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: AetherStream version and wire version
+      placeholder: "2.1.0 / wire 5"
+    validations: {required: true}
+  - type: dropdown
+    id: simd
+    attributes:
+      label: SIMD path
+      options: [Scalar, AVX2/FMA, AVX-512, ARM64 Neon, Unknown]
+    validations: {required: true}
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU model
+      description: Include architecture and whether running under emulation or a VM.
+    validations: {required: true}
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and compiler
+      placeholder: "Ubuntu 24.04, GCC 14.2"
+    validations: {required: true}
+  - type: input
+    id: python
+    attributes:
+      label: Python version and installation method
+      placeholder: "CPython 3.12.5, PyPI wheel"
+    validations: {required: true}
+  - type: input
+    id: sample_rate
+    attributes:
+      label: Telemetry sample rate and chunk sizes
+      placeholder: "20 kHz; chunks of 64–256 float32 values"
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproducible code
+      render: python
+    validations: {required: true}
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations: {required: true}
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs, sanitizer output, and dataset description
+      description: Remove secrets and attach the smallest shareable input.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I reproduced this on the latest supported release.
+          required: true
+        - label: The input contains only finite float32 values.
+          required: true
+        - label: This is not a privately reportable security issue.
+          required: true

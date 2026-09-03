@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose an algorithm, platform, API, or integration
+labels: [enhancement, triage]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options: [Compression algorithm, SIMD or platform, Streaming API, Python API, CMake or packaging, Benchmarking, Documentation]
+    validations: {required: true}
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and use case
+      description: Describe the telemetry source, constraints, and why existing behavior is insufficient.
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed design
+      description: Include wire-format, error-bound, rate, latency, and compatibility implications.
+    validations: {required: true}
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations: {required: true}
+  - type: input
+    id: platforms
+    attributes:
+      label: Required platforms and instruction sets
+      placeholder: "Linux aarch64/Neon, Windows AMD64/AVX2"
+  - type: textarea
+    id: evidence
+    attributes:
+      label: References or measurements
+      description: Link papers, standards, representative data, and reproducible benchmarks.
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility assessment
+      options:
+        - label: I considered scalar fallback behavior.
+        - label: I considered whether this changes wire format 5.
+        - label: I can help implement or test this proposal.
