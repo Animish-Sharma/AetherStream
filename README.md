@@ -2,7 +2,9 @@
 
 # ⚡ AetherStream
 
-**Production-oriented compression for streaming float32 telemetry**
+**Indexed, SIMD-accelerated compression for streaming float32 telemetry**
+
+**v2.2.0** · Random access · Apache Arrow · Pure-Python MiniSEED-2
 
 [![PyPI](https://img.shields.io/pypi/v/aetherstream.svg?color=2563eb)](https://pypi.org/project/aetherstream/)
 [![CI and Sanitizers](https://github.com/animish-sharma/aetherstream/actions/workflows/ci.yml/badge.svg)](https://github.com/animish-sharma/aetherstream/actions/workflows/ci.yml)
@@ -26,6 +28,16 @@ AetherStream is an open-source C++20 and Python codec for finite, one-dimensiona
 It combines an **Autocorrelation-Driven Spectral Predictor (ADSP)**, online **Generalized Error Distribution (GED)** modeling, dead-zone **Entropy-Constrained Lloyd–Max (ECLM)** quantization, and a **16-state interleaved rANS** coder. Applications select either an enforced serialized-rate budget or a deterministic pointwise absolute-error bound. Stateful encoders accept micro-batches while preserving block-equivalent reconstruction.
 
 AetherStream does not publish hardware-independent throughput promises. Run the reproducible benchmark on deployment hardware and report its generated provenance with performance claims.
+
+### What is new in v2.2
+
+- **65.18× measured random-access speedup** for a 512-sample window in the local 144,000-sample EarthScope trace: 24.724 µs indexed slicing versus 1,611.45 µs full decompression.
+- **AIDX block footer** and C++/Python `decompress_slice()` APIs, while retaining compatibility with unindexed wire-format-v5 streams.
+- **Four-segment cubic ECLM evaluation** with AVX2 FMA and ARM64 Neon kernels.
+- **Native Arrow bridge** with zero-copy primitive-buffer input views and direct-to-Arrow decoding.
+- **In-tree MiniSEED-2 decoder** for live EarthScope INT16/INT32/float, Steim-1, and Steim-2 records—no ObsPy dependency.
+
+> Benchmark timings are local-machine measurements, not universal performance guarantees. See [Benchmarks](#benchmarks) for provenance and complete reproduction commands.
 
 ## Key features
 
@@ -72,6 +84,26 @@ indexed = aether.compress(samples, target_rate=3.0, enable_index=True)
 window = aether.decompress_slice(indexed, start=40_000, count=512)
 ```
 
+### Apache Arrow
+
+```bash
+python -m pip install "aetherstream[arrow]"
+```
+
+```python
+import pyarrow as pa
+from aetherstream.arrow import compress_arrow_array, decompress_arrow_buffer
+
+arrow_values = pa.chunked_array(
+    [pa.array(samples[:50_000]), pa.array(samples[50_000:])],
+    type=pa.float32(),
+)
+arrow_wire = compress_arrow_array(arrow_values, target_rate=3.0)
+arrow_restored = decompress_arrow_buffer(arrow_wire, length=len(samples))
+```
+
+Input chunks must be null-free Arrow `float32` arrays. Preserve a separate validity bitmap when null semantics are required.
+
 ### Real-time packet streaming
 
 ```python
@@ -97,6 +129,8 @@ Complete commands and platform caveats are in the **[installation matrix](docs/I
 
 ```bash
 python -m pip install aetherstream
+# Include optional Apache Arrow integration:
+python -m pip install "aetherstream[arrow]"
 ```
 
 The wheel matrix targets CPython 3.9–3.13, manylinux 2.28 x86-64/aarch64, macOS x86-64/arm64, and Windows AMD64.
@@ -224,9 +258,9 @@ The analytical entropy target initializes the codebook; serialized-byte measurem
 
 ## Benchmarks
 
-![Illustrative rate-distortion chart](assets/rate_distortion_curve.svg)
+![Measured AetherStream rate-distortion chart with illustrative comparison references](assets/rate_distortion_curve.svg)
 
-The SVG above is labelled illustrative unless generated from benchmark output. It is not evidence for a throughput claim.
+The AetherStream series in this checked-in SVG was generated from the live EarthScope run below and averaged by requested rate across the two datasets. Comparison reference curves remain illustrative and must not be interpreted as measured competitor results.
 
 ```bash
 python benchmarks/fetch_usgs_data.py --strict
@@ -234,7 +268,28 @@ python benchmarks/bench_rigorous.py
 python benchmarks/bench_random_access.py
 ```
 
-The fetcher uses `urllib.request` and an in-tree MiniSEED-2/Steim decoder; ObsPy is not required. The rigorous suite records data provenance and compares AetherStream with Zstandard raw/shuffled modes, uniform Lloyd–Max, and the official SZ3 executable when installed. It writes:
+The fetcher uses `urllib.request` and an in-tree MiniSEED-2/Steim decoder; ObsPy is not required. The verified strict run downloaded 144,000 samples from `IU.ANMO.00.BHZ` and 86,343 samples from `PB.B004.T0.LS1`. Both are recorded as `EarthScope FDSN MiniSEED 2 service` in the generated manifest.
+
+### Measured AetherStream results
+
+| Dataset | Mode | Wire bits/sample | Ratio | PSNR | Encode GB/s | Decode GB/s |
+|---|---|---:|---:|---:|---:|---:|
+| IU.ANMO seismic | Rate 2 | 1.764 | 18.15× | 34.30 dB | 0.008 | 0.370 |
+| IU.ANMO seismic | Rate 3 | 2.702 | 11.84× | 43.09 dB | 0.004 | 0.388 |
+| IU.ANMO seismic | Rate 4 | 3.588 | 8.92× | 47.05 dB | 0.003 | 0.345 |
+| PB.B004 strain | Rate 2 | 1.352 | 23.67× | 15.84 dB | 0.013 | 0.499 |
+| PB.B004 strain | Rate 3 | 1.826 | 17.52× | 15.81 dB | 0.006 | 0.434 |
+| PB.B004 strain | Rate 4 | 2.253 | 14.20× | 16.59 dB | 0.004 | 0.405 |
+
+Strict error-mode runs also met their pointwise bounds: `0.01` and `0.001` maximum absolute error on both traces. The strain rate-mode PSNR reflects the selected real trace and is reported without smoothing or omission.
+
+### Indexed slicing
+
+| Samples in frame | Requested window | Full decode | Indexed slice | Speedup |
+|---:|---:|---:|---:|---:|
+| 144,000 | 512 | 1,611.45 µs | 24.724 µs | **65.18×** |
+
+The rigorous suite records data provenance and compares AetherStream with Zstandard raw/shuffled modes, uniform Lloyd–Max, and the official SZ3 executable when installed. SZ3 is omitted when its official executable is unavailable; no simulated row is reported. It writes:
 
 - `benchmarks/results/benchmark_results.csv`
 - `benchmarks/results/benchmark_results.json`
@@ -252,7 +307,9 @@ cmake --build build --parallel 1
 ctest --test-dir build --output-on-failure
 ```
 
-Sanitizer and fuzzing procedures are documented in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). The normative interoperability contract is [Wire Format v2.2](docs/WIRE_FORMAT_SPEC.md).
+The v2.2 pre-publication run passed 12 Python tests, 7 native release tests, 7 ASan/UBSan tests, C++/Python formatting and static checks, package installation, an external CMake consumer, Docker runtime validation, and a 315,132-execution indexed-decoder fuzz campaign.
+
+Sanitizer and fuzzing procedures are documented in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). The normative interoperability contract is [Wire Format v2.2](docs/WIRE_FORMAT_SPEC.md), and maintainers should follow the [release checklist](docs/RELEASE_CHECKLIST.md).
 
 ## Troubleshooting
 
