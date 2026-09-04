@@ -6,9 +6,9 @@
 
 namespace aether {
 
-class RateBudgetExceeded final : public std::runtime_error {
+class RateBudgetExceeded final : public StreamError {
    public:
-    explicit RateBudgetExceeded(const std::string& message) : std::runtime_error(message) {}
+    explicit RateBudgetExceeded(const std::string& message) : StreamError(message) {}
 };
 
 struct RateDecision {
@@ -21,11 +21,7 @@ class RateController {
    public:
     RateController(float bits_per_sample, std::size_t sample_count, std::size_t metadata_bytes,
                    std::size_t table_bytes,
-                   std::size_t available_wire_bytes = std::numeric_limits<std::size_t>::max())
-        : bits_per_sample_(bits_per_sample),
-          sample_count_(sample_count),
-          metadata_bytes_(metadata_bytes),
-          table_bytes_(table_bytes) {
+                   std::size_t available_wire_bytes = std::numeric_limits<std::size_t>::max()) {
         if (!std::isfinite(bits_per_sample) || bits_per_sample <= 0.0f)
             throw std::invalid_argument("wire-rate budget must be finite and positive");
         if (sample_count == 0) throw std::invalid_argument("wire-rate controller requires samples");
@@ -53,7 +49,7 @@ class RateController {
     float secant_step(float lambda, std::size_t actual_wire_bytes,
                       float scale_hint) const noexcept {
         if (accepts(actual_wire_bytes)) return lambda;
-        const double denominator = std::max<std::size_t>(budget_bytes_, 1);
+        const double denominator = static_cast<double>(std::max<std::size_t>(budget_bytes_, 1));
         const double excess =
             (static_cast<double>(actual_wire_bytes) - static_cast<double>(budget_bytes_)) /
             denominator;
@@ -67,10 +63,6 @@ class RateController {
     }
 
    private:
-    float bits_per_sample_;
-    std::size_t sample_count_;
-    std::size_t metadata_bytes_;
-    std::size_t table_bytes_;
     std::size_t budget_bytes_ = 0;
     float target_entropy_ = 0.0f;
 };

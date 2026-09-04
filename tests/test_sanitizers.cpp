@@ -60,8 +60,9 @@ int main() {
 
     const uint32_t body_size = read_u32(valid, 64);
     (void)body_size;
-    const uint16_t levels = static_cast<uint16_t>(valid[88]) | static_cast<uint16_t>(valid[89])
-                                                                   << 8;
+    const uint16_t levels =
+        static_cast<uint16_t>(static_cast<uint16_t>(valid[88]) |
+                              static_cast<uint16_t>(static_cast<uint16_t>(valid[89]) << 8));
     const std::size_t payload = 68 + 28 + 4ULL * levels;
 
     auto invalid_k = valid;
@@ -146,8 +147,8 @@ int main() {
     aether::simd::PiecewisePolynomialQuantizer polynomial;
     polynomial.inverse_scale = 0.5f;
     polynomial.cell_count = 32;
-    for (unsigned segment = 0; segment < 4; ++segment) {
-        polynomial.coefficients[segment][0] = 8.0f * segment;
+    for (unsigned segment = 0; segment < 6; ++segment) {
+        polynomial.coefficients[segment][0] = 8.0f * static_cast<float>(segment);
         polynomial.coefficients[segment][1] = 7.5f;
         polynomial.coefficients[segment][2] = 0.25f;
         polynomial.coefficients[segment][3] = 0.125f;

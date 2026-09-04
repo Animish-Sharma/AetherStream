@@ -26,8 +26,28 @@ int main() {
 
     const aether::AetherCodec indexed(4.0f, 0.3f, 0.0f, true);
     const auto encoded = indexed.compress(samples);
+    assert(encoded[4] == aether::WIRE_FORMAT_VERSION && encoded[5] == 0);
+    auto deprecated_indexed = encoded;
+    deprecated_indexed[4] = 5;
+    bool deprecated_rejected = false;
+    try {
+        std::vector<float> ignored(samples.size());
+        indexed.decompress(deprecated_indexed, ignored);
+    } catch (const aether::DeprecatedWireFormatException& error) {
+        deprecated_rejected = std::string(error.what()) ==
+                              "Wire format v5 indexed footers are deprecated. Re-encode using v6.";
+    }
+    assert(deprecated_rejected);
+
     std::vector<float> full(samples.size());
     indexed.decompress(encoded, full);
+    const aether::IndexedStreamView cached(encoded);
+    assert(cached.sample_count() == samples.size());
+    assert(cached.block_count() == 8);
+    std::vector<float> cached_slice(97);
+    cached.decompress_slice(aether::BLOCK_SIZE - 23, cached_slice.size(), cached_slice);
+    for (std::size_t i = 0; i < cached_slice.size(); ++i)
+        assert(cached_slice[i] == full[aether::BLOCK_SIZE - 23 + i]);
 
     check_slice(encoded, full, 0, 1);
     check_slice(encoded, full, 17, 301);

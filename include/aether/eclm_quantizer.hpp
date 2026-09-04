@@ -1,5 +1,7 @@
 #pragma once
 
+#include <limits>
+
 #include "common.hpp"
 #include "simd_dispatch.hpp"
 
@@ -10,11 +12,17 @@ class ECLMQuantizer {
     explicit ECLMQuantizer(float target_rate = 4.0f, float deadzone_factor = 0.3f);
     ECLMQuantizer(std::size_t levels, float target_rate, float deadzone_factor = 0.3f);
 
-    void design(const GedParameters& ged, unsigned iterations = 60, float initial_lambda = 0.0f);
+    void design(const GedParameters& ged, unsigned iterations = 60, float initial_lambda = 0.0f,
+                float observed_peak = 0.0f);
     void fit_samples(const float* samples, std::size_t count, unsigned iterations = 20);
+    void fit_reconstruction_samples(const float* samples, std::size_t count);
+    bool uses_impulsive_tail() const noexcept { return std::isfinite(exact_tail_threshold_); }
 
     uint8_t quantize(float value) const;
     void quantize(const float* values, uint8_t* output, std::size_t count) const;
+    void quantize_polynomial_backend(const float* values, uint8_t* output, std::size_t count,
+                                     simd::Backend backend) const;
+    void quantize_exact(const float* values, uint8_t* output, std::size_t count) const;
 
     float reconstruct(uint8_t index) const { return codebook_.at(index); }
 
@@ -41,6 +49,7 @@ class ECLMQuantizer {
     float deadzone_factor_;
     float deadzone_threshold_ = 0.0f;
     float lambda_ = 0.0f;
+    float exact_tail_threshold_ = std::numeric_limits<float>::infinity();
     GedParameters ged_{};
     // levels_ remains monotonic in cell order for Lloyd-Max updates;
     // codebook_ remaps the dead-zone reconstruction to wire symbol zero.

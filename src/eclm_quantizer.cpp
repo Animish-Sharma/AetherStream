@@ -135,22 +135,29 @@ void ECLMQuantizer::rebuild_polynomial() {
         if (std::isfinite(boundaries_[i])) scale = std::max(scale, std::abs(boundaries_[i]));
     }
     polynomial_.inverse_scale = 1.0f / scale;
+    polynomial_.deadzone_threshold = deadzone_threshold_;
+    polynomial_.outer_lower = boundaries_[1];
+    polynomial_.outer_upper = boundaries_[level_count_ - 1];
     polynomial_.cell_count = static_cast<uint32_t>(level_count_);
+    polynomial_.center_cell = static_cast<uint32_t>(center_index_);
 
-    // Least-squares fit the exact monotone boundary rank in each normalized
-    // half-quadrant. Sampling cell interiors rather than only boundaries makes
-    // the truncated polynomial result stable under scalar and vector FMA.
+    // Fit six local cubics at Chebyshev nodes. The SIMD kernels evaluate the
+    // resulting monomial coefficients with FMAs, then the quantizer performs
+    // a local boundary correction around the candidate cell. This preserves
+    // exact dead-zone and tail decisions without a full boundary scan.
     constexpr unsigned samples = 65;
-    for (unsigned segment = 0; segment < 4; ++segment) {
+    constexpr double pi = 3.141592653589793238462643383279502884;
+    for (unsigned segment = 0; segment < 6; ++segment) {
         double normal[4][5]{};
-        const double segment_start = -1.0 + 0.5 * segment;
+        const double segment_start = -1.0 + static_cast<double>(segment) / 3.0;
         for (unsigned sample = 0; sample < samples; ++sample) {
-            const double epsilon = (sample + 0.5) / samples;
-            const double normalized = segment_start + 0.5 * epsilon;
+            const double epsilon =
+                0.5 * (1.0 + std::cos(pi * (2.0 * sample + 1.0) / (2.0 * samples)));
+            const double normalized = segment_start + epsilon / 3.0;
             const float value = static_cast<float>(normalized * scale);
             const auto boundary =
                 std::upper_bound(boundaries_.begin() + 1, boundaries_.end() - 1, value);
-            const double target = static_cast<double>(boundary - boundaries_.begin() - 1) + 0.45;
+            const double target = static_cast<double>(boundary - boundaries_.begin() - 1) + 0.499;
             const double powers[7] = {1.0,
                                       epsilon,
                                       epsilon * epsilon,
@@ -173,8 +180,7 @@ void ECLMQuantizer::rebuild_polynomial() {
             for (unsigned column = diagonal; column < 5; ++column)
                 std::swap(normal[diagonal][column], normal[pivot][column]);
             const double divisor = normal[diagonal][diagonal];
-            if (std::abs(divisor) < 1e-14)
-                throw std::runtime_error("singular polynomial quantizer fit");
+            if (std::abs(divisor) < 1e-14) throw StreamError("singular polynomial quantizer fit");
             for (unsigned column = diagonal; column < 5; ++column)
                 normal[diagonal][column] /= divisor;
             for (unsigned row = 0; row < 4; ++row) {
@@ -211,10 +217,11 @@ void ECLMQuantizer::update_cells() {
     }
 }
 
-void ECLMQuantizer::design(const GedParameters& ged, unsigned iterations, float initial_lambda) {
+void ECLMQuantizer::design(const GedParameters& ged, unsigned iterations, float initial_lambda,
+                           float observed_peak) {
     if (!std::isfinite(ged.alpha) || ged.alpha < 0.0f || !std::isfinite(ged.beta) ||
         ged.beta < 0.2f || ged.beta > 5.0f || !std::isfinite(initial_lambda) ||
-        initial_lambda < 0.0f)
+        initial_lambda < 0.0f || !std::isfinite(observed_peak) || observed_peak < 0.0f)
         throw std::invalid_argument("invalid GED quantizer parameters");
     ged_ = ged;
     ged_.mean = 0.0f;
@@ -230,23 +237,65 @@ void ECLMQuantizer::design(const GedParameters& ged, unsigned iterations, float 
     }
 
     const double tail_span = ged.alpha * std::pow(std::log(2e9), 1.0 / std::max(ged.beta, 0.2f));
-    const double span = std::max(tail_span, static_cast<double>(deadzone_threshold_) * 1.01);
+    const double sigma =
+        ged.alpha * std::sqrt(std::tgamma(3.0 / ged.beta) / std::tgamma(1.0 / ged.beta));
+    const bool impulsive = ged.beta < 0.8f && observed_peak > 8.0 * sigma;
+    const double span =
+        std::max({tail_span, impulsive ? static_cast<double>(observed_peak) * 1.05 : 0.0,
+                  static_cast<double>(deadzone_threshold_) * 1.01});
+    const double central_limit =
+        std::clamp(3.5 * sigma, static_cast<double>(deadzone_threshold_) * 1.01, span);
+    exact_tail_threshold_ = impulsive ? static_cast<float>(std::min(4.0 * sigma, central_limit))
+                                      : std::numeric_limits<float>::infinity();
 
     boundaries_.front() = -std::numeric_limits<float>::infinity();
     boundaries_.back() = std::numeric_limits<float>::infinity();
     boundaries_[center_index_] = -deadzone_threshold_;
     boundaries_[center_index_ + 1] = deadzone_threshold_;
 
-    for (std::size_t i = 1; i < center_index_; ++i) {
-        const double fraction = static_cast<double>(i) / center_index_;
-        boundaries_[i] = static_cast<float>(-span + fraction * (span - deadzone_threshold_));
-    }
+    const auto positive_boundary = [&](std::size_t offset, std::size_t cells) {
+        if (!impulsive) {
+            return static_cast<float>(deadzone_threshold_ + static_cast<double>(offset) /
+                                                                static_cast<double>(cells) *
+                                                                (span - deadzone_threshold_));
+        }
+        const std::size_t tail_cells = std::max<std::size_t>(
+            1, static_cast<std::size_t>(std::lround(static_cast<double>(cells) * 0.20)));
+        const std::size_t central_cells = cells - tail_cells;
+        if (offset <= central_cells && central_cells != 0)
+            return static_cast<float>(deadzone_threshold_ +
+                                      static_cast<double>(offset) /
+                                          static_cast<double>(central_cells) *
+                                          (central_limit - deadzone_threshold_));
+        const std::size_t tail_offset = offset - central_cells;
+        const double fraction = static_cast<double>(tail_offset) / static_cast<double>(tail_cells);
+        return static_cast<float>(central_limit * std::pow(span / central_limit, fraction));
+    };
 
     const std::size_t positive_cells = level_count_ - center_index_ - 1;
-    for (std::size_t offset = 1; offset < positive_cells; ++offset) {
-        const double fraction = static_cast<double>(offset) / positive_cells;
-        boundaries_[center_index_ + 1 + offset] =
-            static_cast<float>(deadzone_threshold_ + fraction * (span - deadzone_threshold_));
+    const std::size_t negative_tail_cells = std::max<std::size_t>(
+        1, static_cast<std::size_t>(std::lround(static_cast<double>(center_index_) * 0.20)));
+    const std::size_t positive_tail_cells = std::max<std::size_t>(
+        1, static_cast<std::size_t>(std::lround(static_cast<double>(positive_cells) * 0.20)));
+    const std::size_t first_positive_tail = positive_cells - positive_tail_cells;
+    if (impulsive) {
+        for (std::size_t i = 1; i < center_index_; ++i)
+            boundaries_[i] = -positive_boundary(center_index_ - i, center_index_);
+        for (std::size_t offset = 1; offset < positive_cells; ++offset)
+            boundaries_[center_index_ + 1 + offset] = positive_boundary(offset, positive_cells);
+    } else {
+        // Preserve the established arithmetic order for ordinary GED blocks;
+        // this keeps their polynomial fits and wire output bit-for-bit stable.
+        for (std::size_t i = 1; i < center_index_; ++i) {
+            const double fraction = static_cast<double>(i) / static_cast<double>(center_index_);
+            boundaries_[i] = static_cast<float>(-span + fraction * (span - deadzone_threshold_));
+        }
+        for (std::size_t offset = 1; offset < positive_cells; ++offset) {
+            const double fraction =
+                static_cast<double>(offset) / static_cast<double>(positive_cells);
+            boundaries_[center_index_ + 1 + offset] =
+                static_cast<float>(deadzone_threshold_ + fraction * (span - deadzone_threshold_));
+        }
     }
 
     for (std::size_t i = 0; i < level_count_; ++i) {
@@ -263,7 +312,9 @@ void ECLMQuantizer::design(const GedParameters& ged, unsigned iterations, float 
     for (unsigned iteration = 0; iteration < iterations; ++iteration) {
         std::vector<float> next = boundaries_;
         for (std::size_t i = 1; i < level_count_; ++i) {
-            if (i == center_index_ || i == center_index_ + 1) {
+            if (i == center_index_ || i == center_index_ + 1 ||
+                (impulsive &&
+                 (i <= negative_tail_cells || i >= center_index_ + 1 + first_positive_tail))) {
                 continue;
             }
 
@@ -285,6 +336,54 @@ void ECLMQuantizer::design(const GedParameters& ged, unsigned iterations, float 
         lambda_ = std::max(0.0f, lambda_ + ascent_step * (entropy() - target_rate_));
         ascent_step *= 0.96f;
     }
+    if (impulsive) {
+        // Retain the Lloyd-Max-optimized central cells while restoring the
+        // explicit logarithmic tail boundaries after unconstrained updates.
+        for (std::size_t i = 1; i <= negative_tail_cells; ++i)
+            boundaries_[i] = -positive_boundary(center_index_ - i, center_index_);
+        for (std::size_t offset = first_positive_tail; offset < positive_cells; ++offset)
+            boundaries_[center_index_ + 1 + offset] = positive_boundary(offset, positive_cells);
+        update_cells();
+        // GED conditional means underweight sparse empirical impulses. Tail
+        // reconstructions follow the logarithmic cells and anchor the outer
+        // cells at the largest observed magnitude.
+        for (std::size_t cell = 0; cell < level_count_; ++cell) {
+            const double left = boundaries_[cell];
+            const double right = boundaries_[cell + 1];
+            if (cell >= level_count_ - positive_tail_cells) {
+                levels_[cell] = static_cast<float>(
+                    std::isfinite(right) ? std::sqrt(left * right)
+                                         : std::sqrt(left * static_cast<double>(observed_peak)));
+            } else if (cell < negative_tail_cells) {
+                levels_[cell] = static_cast<float>(
+                    std::isfinite(left)
+                        ? -std::sqrt((-left) * (-right))
+                        : -std::sqrt((-right) * static_cast<double>(observed_peak)));
+            }
+        }
+    }
+    rebuild_codebook();
+}
+
+void ECLMQuantizer::fit_reconstruction_samples(const float* samples, std::size_t count) {
+    if (count == 0) return;
+    if (samples == nullptr) throw std::invalid_argument("null quantizer training input");
+    std::vector<double> sums(level_count_, 0.0);
+    std::vector<std::size_t> counts(level_count_, 0);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!std::isfinite(samples[i]))
+            throw std::invalid_argument("quantizer training input must be finite");
+        const std::size_t cell = static_cast<std::size_t>(
+            std::upper_bound(boundaries_.begin() + 1, boundaries_.end() - 1, samples[i]) -
+            boundaries_.begin() - 1);
+        sums[cell] += samples[i];
+        ++counts[cell];
+    }
+    for (std::size_t cell = 0; cell < level_count_; ++cell) {
+        if (cell != center_index_ && counts[cell] != 0)
+            levels_[cell] = static_cast<float>(sums[cell] / static_cast<double>(counts[cell]));
+    }
+    levels_[center_index_] = 0.0f;
     rebuild_codebook();
 }
 
@@ -303,7 +402,9 @@ void ECLMQuantizer::fit_samples(const float* samples, std::size_t count, unsigne
             }
         }
         for (std::size_t code = 1; code < level_count_; ++code) {
-            if (counts[code] != 0) codebook_[code] = static_cast<float>(sums[code] / counts[code]);
+            if (counts[code] != 0)
+                codebook_[code] =
+                    static_cast<float>(sums[code] / static_cast<double>(counts[code]));
         }
         codebook_[0] = 0.0f;
         for (std::size_t cell = 0; cell < level_count_; ++cell)
@@ -327,8 +428,52 @@ uint8_t ECLMQuantizer::quantize(float value) const {
     if (!std::isfinite(value)) throw std::invalid_argument("quantizer input must be finite");
     if (std::abs(value) <= deadzone_threshold_) return 0;
     std::size_t cell = simd::polynomial_cell(value, polynomial_);
+    if (std::abs(value) > exact_tail_threshold_)
+        cell = static_cast<std::size_t>(
+            std::upper_bound(boundaries_.begin() + 1, boundaries_.end() - 1, value) -
+            boundaries_.begin() - 1);
     if (cell == center_index_) cell = value < 0.0f ? center_index_ - 1 : center_index_ + 1;
     return code_for_cell(cell);
+}
+
+void ECLMQuantizer::quantize_polynomial_backend(const float* values, uint8_t* output,
+                                                std::size_t count, simd::Backend backend) const {
+    if (count != 0 && (values == nullptr || output == nullptr))
+        throw std::invalid_argument("null quantizer array");
+    for (std::size_t i = 0; i < count; ++i)
+        if (!std::isfinite(values[i]))
+            throw std::invalid_argument("quantizer input must be finite");
+    simd::polynomial_quantize_backend(backend, values, polynomial_, output, count);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (std::abs(values[i]) <= deadzone_threshold_) {
+            output[i] = 0;
+        } else {
+            std::size_t cell = output[i];
+            while (cell > 0 && values[i] <= boundaries_[cell]) --cell;
+            while (cell + 1 < level_count_ && values[i] > boundaries_[cell + 1]) ++cell;
+            if (cell == center_index_)
+                cell = values[i] < 0.0f ? center_index_ - 1 : center_index_ + 1;
+            output[i] = code_for_cell(cell);
+        }
+    }
+}
+
+void ECLMQuantizer::quantize_exact(const float* values, uint8_t* output, std::size_t count) const {
+    if (count != 0 && (values == nullptr || output == nullptr))
+        throw std::invalid_argument("null quantizer array");
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!std::isfinite(values[i]))
+            throw std::invalid_argument("quantizer input must be finite");
+        if (std::abs(values[i]) <= deadzone_threshold_) {
+            output[i] = 0;
+            continue;
+        }
+        std::size_t cell = static_cast<std::size_t>(
+            std::upper_bound(boundaries_.begin() + 1, boundaries_.end() - 1, values[i]) -
+            boundaries_.begin() - 1);
+        if (cell == center_index_) cell = values[i] < 0.0f ? center_index_ - 1 : center_index_ + 1;
+        output[i] = code_for_cell(cell);
+    }
 }
 
 void ECLMQuantizer::quantize(const float* values, uint8_t* output, std::size_t count) const {
@@ -343,6 +488,8 @@ void ECLMQuantizer::quantize(const float* values, uint8_t* output, std::size_t c
             output[i] = 0;
         } else {
             std::size_t cell = output[i];
+            while (cell > 0 && values[i] <= boundaries_[cell]) --cell;
+            while (cell + 1 < level_count_ && values[i] > boundaries_[cell + 1]) ++cell;
             if (cell == center_index_)
                 cell = values[i] < 0.0f ? center_index_ - 1 : center_index_ + 1;
             output[i] = code_for_cell(cell);

@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "aetherstream"
-version = "2.2.0"
+version = "0.0.1"
 description = "Dual-mode streaming telemetry compression with strict error and wire-rate bounds"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -58,7 +58,7 @@ sdist.include = [
   "LICENSE", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
   "SECURITY.md", "CITATION.cff", "Dockerfile", "CMakePresets.json", ".clang-format",
   ".gitattributes", "generate_assets.py",
-  "docs/**", "assets/**", "tests/**", "fuzz/**", "benchmarks/*.py", ".github/**",
+  "docs/**", "assets/**", "tests/**", "fuzz/**", "benchmarks/*.py", "scripts/**", ".github/**",
   "conda-recipe/**", "ports/**", "vcpkg.json", "requirements*.txt",
 ]
 sdist.exclude = [

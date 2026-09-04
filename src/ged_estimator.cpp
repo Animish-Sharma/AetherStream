@@ -72,8 +72,9 @@ GedParameters GedEstimator::estimate(const float* residuals, std::size_t count) 
         squared_sum += chunk_squared;
     }
 
-    const double first_absolute_moment = absolute_sum / count;
-    const double variance = squared_sum / count;
+    const double sample_count = static_cast<double>(count);
+    const double first_absolute_moment = absolute_sum / sample_count;
+    const double variance = squared_sum / sample_count;
     if (variance <= std::numeric_limits<float>::min()) return {mean, 0.0f, 2.0f};
 
     const double ratio =
@@ -81,7 +82,7 @@ GedParameters GedEstimator::estimate(const float* residuals, std::size_t count) 
     const float beta = shape_from_ratio(ratio);
     const double alpha =
         std::sqrt(variance * std::exp(std::lgamma(1.0 / beta) - std::lgamma(3.0 / beta)));
-    if (!std::isfinite(alpha)) throw std::runtime_error("GED parameter estimation overflow");
+    if (!std::isfinite(alpha)) throw StreamError("GED parameter estimation overflow");
     return {mean, static_cast<float>(alpha), beta};
 }
 

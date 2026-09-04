@@ -58,10 +58,17 @@ def result(dataset, codec, samples, reconstructed, byte_count, enc_time, dec_tim
     }
 
 
-def bench_aether(name, samples, rate=None, error=None):
+def bench_aether(name, samples, rate=None, error=None, adaptive_tail=True):
     label = f"aether-rate-{rate:g}" if rate else f"aether-error-{error:g}"
+    if rate is not None and not adaptive_tail:
+        label += "-no-tail"
     start = time.perf_counter()
-    encoded = aether.compress(samples, target_rate=rate or 4.0, absolute_error=error or 0.0)
+    encoded = aether.compress(
+        samples,
+        target_rate=rate or 4.0,
+        absolute_error=error or 0.0,
+        adaptive_tail=adaptive_tail,
+    )
     enc_time = time.perf_counter() - start
     start = time.perf_counter()
     decoded = aether.decompress(encoded, samples.size)
@@ -72,6 +79,19 @@ def bench_aether(name, samples, rate=None, error=None):
     if error is not None and row["max_absolute_error"] > error * 1.0001:
         raise AssertionError("absolute-error violation")
     return row
+
+
+def triggered_block_psnr_gain(samples, rate, block_indices):
+    adaptive_wire = aether.compress(samples, target_rate=rate, adaptive_tail=True)
+    baseline_wire = aether.compress(samples, target_rate=rate, adaptive_tail=False)
+    adaptive = aether.decompress(adaptive_wire, samples.size)
+    baseline = aether.decompress(baseline_wire, samples.size)
+    selected = np.concatenate(
+        [np.arange(index * 2048, min(samples.size, (index + 1) * 2048)) for index in block_indices]
+    )
+    _, adaptive_psnr, _ = quality(samples[selected], adaptive[selected])
+    _, baseline_psnr, _ = quality(samples[selected], baseline[selected])
+    return adaptive_psnr - baseline_psnr
 
 
 def shuffled_bytes(samples):
@@ -210,7 +230,7 @@ def save_outputs(rows):
         axis.set(
             xlabel="actual wire bits/sample",
             ylabel="PSNR (dB)",
-            title="AetherStream v2.2 Pareto comparison",
+            title="AetherStream 0.0.1 Pareto comparison",
         )
         axis.grid(alpha=0.3)
         axis.legend()
@@ -235,12 +255,32 @@ def main():
     if not (DATA / "manifest.json").exists():
         fetch_all(DATA)
     rows = []
+    tail_validation: dict[str, Any] = {}
     for path in sorted(DATA.glob("*.npy")):
         samples = np.load(path).astype(np.float32, copy=False)
         name = path.stem
         aether.compress(samples[:4096], target_rate=4.0)
+        if name == "ridgecrest_strong_motion":
+            diagnostics = dict(aether._analyze_impulsive_blocks(samples))
+            if diagnostics["triggered_blocks"] == 0:
+                raise AssertionError("Ridgecrest trace did not trigger adaptive tail partition")
+            tail_validation["diagnostics"] = diagnostics
+            for validation_rate in (3.0, 4.0, 6.0):
+                tail_validation[f"rate_{validation_rate:g}_triggered_block_psnr_gain_db"] = (
+                    triggered_block_psnr_gain(
+                        samples,
+                        validation_rate,
+                        diagnostics["triggered_block_indices"],
+                    )
+                )
         for rate in (2.0, 3.0, 4.0):
-            rows.append(bench_aether(name, samples, rate=rate))
+            adaptive_row = bench_aether(name, samples, rate=rate)
+            rows.append(adaptive_row)
+            if name == "ridgecrest_strong_motion" and rate >= 3.0:
+                baseline_row = bench_aether(name, samples, rate=rate, adaptive_tail=False)
+                rows.append(baseline_row)
+                gain = adaptive_row["psnr_db"] - baseline_row["psnr_db"]
+                tail_validation[f"rate_{rate:g}_psnr_gain_db"] = gain
         for error in (0.01, 0.001):
             rows.append(bench_aether(name, samples, error=error))
             if shutil.which("sz3") is not None:
@@ -251,8 +291,23 @@ def main():
             for level in (1, 3, 19):
                 for shuffle in (False, True):
                     rows.append(bench_zstd(name, samples, level, shuffle))
+    if tail_validation:
+        gains: list[float] = [
+            float(value)
+            for key, value in tail_validation.items()
+            if key.endswith("triggered_block_psnr_gain_db")
+        ]
+        tail_validation["maximum_psnr_gain_db"] = max(gains)
+        if tail_validation["maximum_psnr_gain_db"] <= 0.0:
+            raise AssertionError("adaptive tail partition did not improve Ridgecrest PSNR")
+        OUTPUT.mkdir(parents=True, exist_ok=True)
+        (OUTPUT / "ridgecrest_tail_validation.json").write_text(
+            json.dumps(tail_validation, indent=2), encoding="utf-8"
+        )
     save_outputs(rows)
     print_table(rows)
+    if tail_validation:
+        print(json.dumps({"ridgecrest_tail_validation": tail_validation}, indent=2))
     if zstd is None:
         print("Zstandard rows omitted: install the zstandard package.")
     if shutil.which("sz3") is None:

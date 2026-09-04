@@ -22,7 +22,8 @@ int main() {
             try {
                 std::vector<float> samples(sample_count);
                 for (std::size_t i = 0; i < samples.size(); ++i) {
-                    const float phase = static_cast<float>(i) * (0.002f + worker * 0.0001f);
+                    const float phase =
+                        static_cast<float>(i) * (0.002f + static_cast<float>(worker) * 0.0001f);
                     samples[i] = std::sin(phase) + 0.01f * std::cos(17.0f * phase);
                 }
 

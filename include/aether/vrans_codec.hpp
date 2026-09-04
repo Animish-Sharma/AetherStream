@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <limits>
 
 #include "common.hpp"
 
@@ -10,7 +11,11 @@ class InterleavedRansEncoder {
    public:
     explicit InterleavedRansEncoder(const std::vector<float>& probabilities = {});
 
-    std::size_t max_compressed_size(std::size_t count) const { return 1024 + 2 * count; }
+    std::size_t max_compressed_size(std::size_t count) const {
+        if (count > (std::numeric_limits<std::size_t>::max() - 1024U) / 2U)
+            throw std::length_error("rANS input is too large");
+        return 1024U + 2U * count;
+    }
 
     std::size_t encode_block(const uint8_t* symbols, std::size_t count, uint8_t* output) const;
     std::vector<uint8_t> encode(const uint8_t* symbols, std::size_t count) const;
@@ -22,7 +27,6 @@ class InterleavedRansEncoder {
 
     std::array<uint16_t, 256> frequencies_{};
     std::array<uint16_t, 257> cumulative_{};
-    uint16_t alphabet_size_ = 256;
 };
 
 class InterleavedRansDecoder {

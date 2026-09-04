@@ -28,11 +28,14 @@ cd aetherstream
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+python -m pip install scikit-build-core pybind11 numpy
 AETHER_LOW_MEMORY=1 CMAKE_BUILD_PARALLEL_LEVEL=1 \
   python -m pip install . --no-build-isolation
 ```
 
-Set `AETHER_NATIVE_OPTIMIZED=1` only for a local artifact that will run on the build host. For a final fallback, configure CMake with `-DAETHER_LOW_MEMORY=ON`, one build job, and `CXXFLAGS=-O0`.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` and set environment variables with `$env:AETHER_LOW_MEMORY = "1"` and `$env:CMAKE_BUILD_PARALLEL_LEVEL = "1"` before running pip.
+
+Set `AETHER_NATIVE_OPTIMIZED=1` only for an artifact that will stay on the build host. For a final fallback, configure CMake with `-DAETHER_LOW_MEMORY=ON`, one build job, and `CXXFLAGS=-O0`.
 
 ## CMake FetchContent
 
@@ -40,7 +43,7 @@ Set `AETHER_NATIVE_OPTIMIZED=1` only for a local artifact that will run on the b
 include(FetchContent)
 FetchContent_Declare(aetherstream
   GIT_REPOSITORY https://github.com/animish-sharma/aetherstream.git
-  GIT_TAG v2.2.0)
+  GIT_TAG v0.0.1)
 set(AETHER_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(aetherstream)
 target_link_libraries(my_app PRIVATE aether::aether_core)
@@ -54,7 +57,7 @@ cmake --build build --parallel 1
 cmake --install build --prefix "$HOME/.local"
 ```
 
-Consumers use `find_package(AetherStream 2.2 REQUIRED CONFIG)` and link `aether::aether_core`.
+Consumers use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and link `aether::aether_core`.
 
 ## vcpkg
 
@@ -69,11 +72,11 @@ Enable host-native code only for local deployments with `aetherstream[native]`.
 ## Docker
 
 ```bash
-docker build -t aetherstream:2.2 .
-docker run --rm aetherstream:2.2
+docker build -t aetherstream:0.0.1 .
+docker run --rm aetherstream:0.0.1
 ```
 
-The build stage uses Clang 16, Ninja, Python 3.11, ASan/UBSan tests, the synthetic benchmark, and deterministic SVG generation. The runtime stage contains only Python and the built wheel.
+The build stage uses Clang 16, Ninja, Python 3.11, native and Python tests, the synthetic benchmark, and deterministic SVG generation. Sanitizer coverage runs separately in CI. The runtime stage contains only Python and the built wheel.
 
 ## Platform notes
 

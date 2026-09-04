@@ -18,6 +18,8 @@
 namespace aether {
 
 inline constexpr uint32_t MAGIC_HEADER = 0x41455448U;
+inline constexpr uint8_t WIRE_FORMAT_VERSION = 6;
+inline constexpr uint8_t MINIMUM_COMPATIBLE_WIRE_FORMAT_VERSION = 5;
 inline constexpr std::size_t BLOCK_SIZE = 2048;
 inline constexpr uint32_t RANS_STATES = 16;
 inline constexpr uint32_t SCALE_BITS = 12;
@@ -54,10 +56,35 @@ struct GedParameters {
     float beta = 2.0f;
 };
 
-class CorruptedStreamException : public std::runtime_error {
+class StreamError : public std::runtime_error {
    public:
-    explicit CorruptedStreamException(const std::string& message) : std::runtime_error(message) {}
+    explicit StreamError(const std::string& message) : std::runtime_error(message) {}
 };
+
+class CorruptedStreamException : public StreamError {
+   public:
+    explicit CorruptedStreamException(const std::string& message) : StreamError(message) {}
+};
+
+class DeprecatedWireFormatException : public CorruptedStreamException {
+   public:
+    explicit DeprecatedWireFormatException(const std::string& message)
+        : CorruptedStreamException(message) {}
+};
+
+class UnsupportedWireFormatException : public CorruptedStreamException {
+   public:
+    explicit UnsupportedWireFormatException(const std::string& message)
+        : CorruptedStreamException(message) {}
+};
+
+inline void validate_wire_format_version(uint16_t version, bool indexed) {
+    if (version == 5 && indexed)
+        throw DeprecatedWireFormatException(
+            "Wire format v5 indexed footers are deprecated. Re-encode using v6.");
+    if (version < MINIMUM_COMPATIBLE_WIRE_FORMAT_VERSION || version > WIRE_FORMAT_VERSION)
+        throw UnsupportedWireFormatException("unsupported AetherStream wire format version");
+}
 
 inline uint32_t crc32c(std::span<const uint8_t> bytes) {
     uint32_t crc = 0xffffffffU;
@@ -98,6 +125,22 @@ inline uint32_t crc32c(std::span<const uint8_t> bytes) {
 
     return ~crc;
 }
+
+namespace internal {
+
+struct DecodedBlock {
+    std::size_t samples_decoded = 0;
+    std::size_t bytes_consumed = 0;
+    float last_s1 = 0.0f;
+    float last_s2 = 0.0f;
+    QuantizationMode quantization_mode = QuantizationMode::RATE_TARGETED;
+};
+
+DecodedBlock decode_block_record(const uint8_t* block_ptr, std::size_t max_bytes,
+                                 std::span<float> out_buffer, float initial_s1 = 0.0f,
+                                 float initial_s2 = 0.0f);
+
+}  // namespace internal
 
 inline float entropy_bits(const std::vector<float>& probabilities) {
     double entropy = 0.0;

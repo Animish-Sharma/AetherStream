@@ -1,14 +1,13 @@
 import os
 import platform
 
+import pybind11
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
-import pybind11
-
-
 sources = [
     "src/bindings.cpp",
+    "src/common.cpp",
     "src/predictor.cpp",
     "src/ged_estimator.cpp",
     "src/eclm_quantizer.cpp",
@@ -29,8 +28,11 @@ def compile_args():
     """
     args = ["-std=c++20", "-g0", "-fno-lto"]
     if os.environ.get("AETHER_NATIVE_OPTIMIZED") == "1":
-        native_flag = ("-mcpu=native" if platform.machine().lower() in
-                       {"aarch64", "arm64"} else "-march=native")
+        native_flag = (
+            "-mcpu=native"
+            if platform.machine().lower() in {"aarch64", "arm64"}
+            else "-march=native"
+        )
         args.extend(["-O3", "-ffast-math", native_flag])
     else:
         args.append(os.environ.get("AETHER_BUILD_OPT_LEVEL", "-O1"))
@@ -51,6 +53,8 @@ class LowMemoryBuildExt(build_ext):
         if self.compiler.compiler_type == "msvc":
             native = os.environ.get("AETHER_NATIVE_OPTIMIZED") == "1"
             flags = ["/std:c++20", "/O2" if native else "/O1"]
+            if not native:
+                flags.append("/GL-")
             if native and platform.machine().lower() in {"amd64", "x86_64"}:
                 flags.append("/arch:AVX2")
             for extension in self.extensions:
@@ -68,7 +72,7 @@ extension = Extension(
 
 setup(
     name="aetherstream",
-    version="2.2.0",
+    version="0.0.1",
     description="Dual-mode streaming telemetry compression with strict error and wire-rate bounds",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

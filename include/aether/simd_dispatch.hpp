@@ -46,24 +46,25 @@ using MomentFunction = void (*)(const float*, std::size_t, float&, float&);
 using QuantizeFunction = void (*)(const float*, const float*, std::size_t, uint8_t*, std::size_t);
 
 struct PiecewisePolynomialQuantizer {
-    // Four cubic coefficient rows in c0,c1,c2,c3 order. Epsilon is local to
-    // each of the symmetric normalized intervals [-1,-.5],[-.5,0],
-    // [0,.5],[.5,1] and therefore lies in [0,1].
-    float coefficients[4][4]{};
+    // Six local cubic rows in monomial c0,c1,c2,c3 order. Coefficients are
+    // fitted at Chebyshev nodes; epsilon is local to each equal-width segment
+    // of the normalized interval [-1,1] and lies in [0,1].
+    float coefficients[6][4]{};
     float inverse_scale = 1.0f;
+    float deadzone_threshold = 0.0f;
+    float outer_lower = 0.0f;
+    float outer_upper = 0.0f;
     uint32_t cell_count = 0;
+    uint32_t center_cell = 0;
 };
 
 inline uint8_t polynomial_cell(float value, const PiecewisePolynomialQuantizer& model) {
+    if (std::abs(value) <= model.deadzone_threshold) return static_cast<uint8_t>(model.center_cell);
+    if (value <= model.outer_lower) return 0;
+    if (value >= model.outer_upper) return static_cast<uint8_t>(model.cell_count - 1);
     const float normalized = std::clamp(value * model.inverse_scale, -1.0f, 1.0f);
-    const unsigned segment = normalized < -0.5f  ? 0U
-                             : normalized < 0.0f ? 1U
-                             : normalized < 0.5f ? 2U
-                                                 : 3U;
-    const float epsilon = 2.0f * normalized + (segment == 0   ? 2.0f
-                                               : segment == 1 ? 1.0f
-                                               : segment == 2 ? 0.0f
-                                                              : -1.0f);
+    const unsigned segment = std::min(5U, static_cast<unsigned>((normalized + 1.0f) * 3.0f));
+    const float epsilon = 3.0f * normalized + 3.0f - static_cast<float>(segment);
     const float* c = model.coefficients[segment];
     const float estimate =
         std::fma(std::fma(std::fma(c[3], epsilon, c[2]), epsilon, c[1]), epsilon, c[0]);
@@ -156,41 +157,53 @@ AETHER_TARGET_AVX2 inline void polynomial_quantize_avx2(const float* values,
     const __m256 inverse_scale = _mm256_set1_ps(model.inverse_scale);
     const __m256 negative_one = _mm256_set1_ps(-1.0f);
     const __m256 positive_one = _mm256_set1_ps(1.0f);
-    const __m256 negative_half = _mm256_set1_ps(-0.5f);
+    const __m256 three = _mm256_set1_ps(3.0f);
     const __m256 zero = _mm256_setzero_ps();
-    const __m256 positive_half = _mm256_set1_ps(0.5f);
-    const __m256 two = _mm256_set1_ps(2.0f);
-    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 sign = _mm256_set1_ps(-0.0f);
+    const __m256 deadzone = _mm256_set1_ps(model.deadzone_threshold);
+    const __m256 outer_lower = _mm256_set1_ps(model.outer_lower);
+    const __m256 outer_upper = _mm256_set1_ps(model.outer_upper);
+    const __m256 center = _mm256_set1_ps(static_cast<float>(model.center_cell));
+    const __m256 last = _mm256_set1_ps(static_cast<float>(model.cell_count - 1));
     std::size_t i = 0;
     for (; i + 8 <= count; i += 8) {
-        __m256 x = _mm256_mul_ps(_mm256_loadu_ps(values + i), inverse_scale);
+        const __m256 raw = _mm256_loadu_ps(values + i);
+        __m256 x = _mm256_mul_ps(raw, inverse_scale);
         x = _mm256_min_ps(positive_one, _mm256_max_ps(negative_one, x));
-        const __m256 mask0 = _mm256_cmp_ps(x, negative_half, _CMP_LT_OQ);
-        const __m256 mask1 = _mm256_andnot_ps(mask0, _mm256_cmp_ps(x, zero, _CMP_LT_OQ));
-        const __m256 mask2 = _mm256_andnot_ps(_mm256_or_ps(mask0, mask1),
-                                              _mm256_cmp_ps(x, positive_half, _CMP_LT_OQ));
-        __m256 offset = _mm256_set1_ps(-1.0f);
-        offset = _mm256_blendv_ps(offset, zero, mask2);
-        offset = _mm256_blendv_ps(offset, one, mask1);
-        offset = _mm256_blendv_ps(offset, two, mask0);
-        const __m256 epsilon = _mm256_fmadd_ps(two, x, offset);
+
+        __m256 segment = _mm256_set1_ps(5.0f);
+        for (int candidate = 4; candidate >= 0; --candidate) {
+            const float upper = -1.0f + static_cast<float>(candidate + 1) / 3.0f;
+            const __m256 mask = _mm256_cmp_ps(x, _mm256_set1_ps(upper), _CMP_LT_OQ);
+            segment =
+                _mm256_blendv_ps(segment, _mm256_set1_ps(static_cast<float>(candidate)), mask);
+        }
+        const __m256 epsilon = _mm256_sub_ps(_mm256_fmadd_ps(three, x, three), segment);
 
         __m256 coefficients[4];
         for (unsigned coefficient = 0; coefficient < 4; ++coefficient) {
-            __m256 selected = _mm256_set1_ps(model.coefficients[3][coefficient]);
-            selected = _mm256_blendv_ps(selected,
-                                        _mm256_set1_ps(model.coefficients[2][coefficient]), mask2);
-            selected = _mm256_blendv_ps(selected,
-                                        _mm256_set1_ps(model.coefficients[1][coefficient]), mask1);
-            selected = _mm256_blendv_ps(selected,
-                                        _mm256_set1_ps(model.coefficients[0][coefficient]), mask0);
+            __m256 selected = _mm256_set1_ps(model.coefficients[5][coefficient]);
+            for (int candidate = 4; candidate >= 0; --candidate) {
+                const __m256 mask = _mm256_cmp_ps(
+                    segment, _mm256_set1_ps(static_cast<float>(candidate)), _CMP_EQ_OQ);
+                selected = _mm256_blendv_ps(
+                    selected, _mm256_set1_ps(model.coefficients[candidate][coefficient]), mask);
+            }
             coefficients[coefficient] = selected;
         }
         __m256 estimate = _mm256_fmadd_ps(coefficients[3], epsilon, coefficients[2]);
         estimate = _mm256_fmadd_ps(estimate, epsilon, coefficients[1]);
         estimate = _mm256_fmadd_ps(estimate, epsilon, coefficients[0]);
-        estimate = _mm256_min_ps(_mm256_set1_ps(static_cast<float>(model.cell_count - 1)),
-                                 _mm256_max_ps(zero, estimate));
+        estimate = _mm256_min_ps(last, _mm256_max_ps(zero, estimate));
+
+        const __m256 magnitude = _mm256_andnot_ps(sign, raw);
+        const __m256 dead_mask = _mm256_cmp_ps(magnitude, deadzone, _CMP_LE_OQ);
+        const __m256 lower_mask = _mm256_cmp_ps(raw, outer_lower, _CMP_LE_OQ);
+        const __m256 upper_mask = _mm256_cmp_ps(raw, outer_upper, _CMP_GE_OQ);
+        estimate = _mm256_blendv_ps(estimate, zero, lower_mask);
+        estimate = _mm256_blendv_ps(estimate, last, upper_mask);
+        estimate = _mm256_blendv_ps(estimate, center, dead_mask);
+
         alignas(32) float lanes[8];
         _mm256_store_ps(lanes, estimate);
         for (unsigned lane = 0; lane < 8; ++lane)
@@ -300,36 +313,50 @@ inline void polynomial_quantize_neon(const float* values, const PiecewisePolynom
     const float32x4_t inverse_scale = vdupq_n_f32(model.inverse_scale);
     const float32x4_t negative_one = vdupq_n_f32(-1.0f);
     const float32x4_t positive_one = vdupq_n_f32(1.0f);
-    const float32x4_t negative_half = vdupq_n_f32(-0.5f);
+    const float32x4_t three = vdupq_n_f32(3.0f);
     const float32x4_t zero = vdupq_n_f32(0.0f);
-    const float32x4_t positive_half = vdupq_n_f32(0.5f);
-    const float32x4_t two = vdupq_n_f32(2.0f);
+    const float32x4_t deadzone = vdupq_n_f32(model.deadzone_threshold);
+    const float32x4_t outer_lower = vdupq_n_f32(model.outer_lower);
+    const float32x4_t outer_upper = vdupq_n_f32(model.outer_upper);
+    const float32x4_t center = vdupq_n_f32(static_cast<float>(model.center_cell));
+    const float32x4_t last = vdupq_n_f32(static_cast<float>(model.cell_count - 1));
     std::size_t i = 0;
     for (; i + 4 <= count; i += 4) {
-        float32x4_t x = vmulq_f32(vld1q_f32(values + i), inverse_scale);
+        const float32x4_t raw = vld1q_f32(values + i);
+        float32x4_t x = vmulq_f32(raw, inverse_scale);
         x = vminq_f32(positive_one, vmaxq_f32(negative_one, x));
-        const uint32x4_t mask0 = vcltq_f32(x, negative_half);
-        const uint32x4_t mask1 = vandq_u32(vmvnq_u32(mask0), vcltq_f32(x, zero));
-        const uint32x4_t mask2 =
-            vandq_u32(vmvnq_u32(vorrq_u32(mask0, mask1)), vcltq_f32(x, positive_half));
-        float32x4_t offset = vdupq_n_f32(-1.0f);
-        offset = vbslq_f32(mask2, zero, offset);
-        offset = vbslq_f32(mask1, vdupq_n_f32(1.0f), offset);
-        offset = vbslq_f32(mask0, two, offset);
-        const float32x4_t epsilon = vfmaq_f32(offset, two, x);
+
+        float32x4_t segment = vdupq_n_f32(5.0f);
+        for (int candidate = 4; candidate >= 0; --candidate) {
+            const float upper = -1.0f + static_cast<float>(candidate + 1) / 3.0f;
+            const uint32x4_t mask = vcltq_f32(x, vdupq_n_f32(upper));
+            segment = vbslq_f32(mask, vdupq_n_f32(static_cast<float>(candidate)), segment);
+        }
+        const float32x4_t epsilon = vsubq_f32(vfmaq_f32(three, three, x), segment);
+
         float32x4_t coefficients[4];
         for (unsigned coefficient = 0; coefficient < 4; ++coefficient) {
-            float32x4_t selected = vdupq_n_f32(model.coefficients[3][coefficient]);
-            selected = vbslq_f32(mask2, vdupq_n_f32(model.coefficients[2][coefficient]), selected);
-            selected = vbslq_f32(mask1, vdupq_n_f32(model.coefficients[1][coefficient]), selected);
-            selected = vbslq_f32(mask0, vdupq_n_f32(model.coefficients[0][coefficient]), selected);
+            float32x4_t selected = vdupq_n_f32(model.coefficients[5][coefficient]);
+            for (int candidate = 4; candidate >= 0; --candidate) {
+                const uint32x4_t mask =
+                    vceqq_f32(segment, vdupq_n_f32(static_cast<float>(candidate)));
+                selected = vbslq_f32(mask, vdupq_n_f32(model.coefficients[candidate][coefficient]),
+                                     selected);
+            }
             coefficients[coefficient] = selected;
         }
         float32x4_t estimate = vfmaq_f32(coefficients[2], coefficients[3], epsilon);
         estimate = vfmaq_f32(coefficients[1], estimate, epsilon);
         estimate = vfmaq_f32(coefficients[0], estimate, epsilon);
-        estimate = vminq_f32(vdupq_n_f32(static_cast<float>(model.cell_count - 1)),
-                             vmaxq_f32(zero, estimate));
+        estimate = vminq_f32(last, vmaxq_f32(zero, estimate));
+
+        const uint32x4_t dead_mask = vcleq_f32(vabsq_f32(raw), deadzone);
+        const uint32x4_t lower_mask = vcleq_f32(raw, outer_lower);
+        const uint32x4_t upper_mask = vcgeq_f32(raw, outer_upper);
+        estimate = vbslq_f32(lower_mask, zero, estimate);
+        estimate = vbslq_f32(upper_mask, last, estimate);
+        estimate = vbslq_f32(dead_mask, center, estimate);
+
         alignas(16) float lanes[4];
         vst1q_f32(lanes, estimate);
         for (unsigned lane = 0; lane < 4; ++lane)

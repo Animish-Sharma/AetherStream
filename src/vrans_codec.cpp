@@ -21,11 +21,12 @@ template <typename T>
 T read_value(const uint8_t*& source, const uint8_t* end) {
     static_assert(std::is_unsigned_v<T>);
     if (static_cast<std::size_t>(end - source) < sizeof(T))
-        throw std::runtime_error("truncated rANS stream");
-    T value = 0;
-    for (std::size_t i = 0; i < sizeof(T); ++i) value |= static_cast<T>(source[i]) << (8 * i);
+        throw CorruptedStreamException("truncated rANS stream");
+    uint64_t value = 0;
+    for (std::size_t i = 0; i < sizeof(T); ++i)
+        value |= static_cast<uint64_t>(source[i]) << (8U * i);
     source += sizeof(T);
-    return value;
+    return static_cast<T>(value);
 }
 
 }  // namespace
@@ -39,29 +40,22 @@ void InterleavedRansEncoder::normalize(const std::vector<float>& probabilities) 
     const std::size_t supplied = std::min<std::size_t>(weights.size(), probabilities.size());
     for (std::size_t i = 0; i < supplied; ++i) weights[i] = std::max(0.0f, probabilities[i]);
 
-    if (!probabilities.empty()) {
-        std::size_t used = supplied;
-        while (used > 1 && weights[used - 1] == 0.0) --used;
-        alphabet_size_ = static_cast<uint16_t>(used);
-    }
-
     double weight_sum = std::accumulate(weights.begin(), weights.end(), 0.0);
     if (weight_sum <= 0.0) {
         std::fill(weights.begin(), weights.end(), 1.0);
-        weight_sum = weights.size();
-        alphabet_size_ = 256;
+        weight_sum = static_cast<double>(weights.size());
     }
 
     struct Remainder {
         double value;
-        int symbol;
+        std::size_t symbol;
     };
 
     std::vector<Remainder> remainders;
     remainders.reserve(256);
     int allocated = 0;
 
-    for (int symbol = 0; symbol < 256; ++symbol) {
+    for (std::size_t symbol = 0; symbol < frequencies_.size(); ++symbol) {
         const double exact = weights[symbol] / weight_sum * SCALE_TOTAL;
         const int frequency =
             weights[symbol] > 0.0 ? std::max(1, static_cast<int>(std::floor(exact))) : 0;
@@ -73,33 +67,36 @@ void InterleavedRansEncoder::normalize(const std::vector<float>& probabilities) 
     std::sort(
         remainders.begin(), remainders.end(),
         [](const Remainder& left, const Remainder& right) { return left.value > right.value; });
-    for (int i = 0; allocated < static_cast<int>(SCALE_TOTAL); ++i, ++allocated) {
+    for (std::size_t i = 0; allocated < static_cast<int>(SCALE_TOTAL); ++i, ++allocated) {
         ++frequencies_[remainders[i % remainders.size()].symbol];
     }
 
     while (allocated > static_cast<int>(SCALE_TOTAL)) {
-        int largest = -1;
-        for (int symbol = 0; symbol < 256; ++symbol) {
+        std::size_t largest = frequencies_.size();
+        for (std::size_t symbol = 0; symbol < frequencies_.size(); ++symbol) {
             if (frequencies_[symbol] > 1 &&
-                (largest < 0 || frequencies_[symbol] > frequencies_[largest])) {
+                (largest == frequencies_.size() || frequencies_[symbol] > frequencies_[largest])) {
                 largest = symbol;
             }
         }
-        if (largest < 0) {
-            throw std::runtime_error("frequency normalization failed");
+        if (largest == frequencies_.size()) {
+            throw StreamError("frequency normalization failed");
         }
         --frequencies_[largest];
         --allocated;
     }
 
     cumulative_[0] = 0;
-    for (int symbol = 0; symbol < 256; ++symbol) {
+    for (std::size_t symbol = 0; symbol < frequencies_.size(); ++symbol) {
         cumulative_[symbol + 1] = static_cast<uint16_t>(cumulative_[symbol] + frequencies_[symbol]);
     }
 }
 
 std::size_t InterleavedRansEncoder::encode_block(const uint8_t* symbols, std::size_t count,
                                                  uint8_t* output) const {
+    if (output == nullptr) throw std::invalid_argument("null rANS output buffer");
+    if (count != 0 && symbols == nullptr) throw std::invalid_argument("null rANS symbol input");
+    max_compressed_size(count);
     std::array<uint32_t, RANS_STATES> states;
     states.fill(kRansLowerBound);
     std::array<std::vector<uint16_t>, RANS_STATES> words;
@@ -110,7 +107,7 @@ std::size_t InterleavedRansEncoder::encode_block(const uint8_t* symbols, std::si
         const unsigned symbol = symbols[position];
         const unsigned frequency = frequencies_[symbol];
         if (frequency == 0) {
-            throw std::runtime_error("symbol has zero frequency");
+            throw StreamError("symbol has zero frequency");
         }
 
         // Promote before multiplying: a frequency of SCALE_TOTAL makes the
@@ -131,7 +128,9 @@ std::size_t InterleavedRansEncoder::encode_block(const uint8_t* symbols, std::si
     write_value(cursor, kStreamMagic);
     write_value(cursor, static_cast<uint64_t>(count));
     uint16_t active_symbols = 0;
-    for (uint16_t frequency : frequencies_) active_symbols += frequency != 0 ? 1U : 0U;
+    for (uint16_t frequency : frequencies_) {
+        if (frequency != 0) ++active_symbols;
+    }
     write_value(cursor, active_symbols);
     for (unsigned symbol = 0; symbol < 256; ++symbol) {
         if (frequencies_[symbol] == 0) continue;
@@ -166,38 +165,40 @@ std::vector<uint8_t> InterleavedRansEncoder::encode(const uint8_t* symbols,
 std::vector<uint8_t> InterleavedRansDecoder::decode(const uint8_t* data, std::size_t size,
                                                     std::size_t expected_count,
                                                     std::size_t maximum_count) {
+    if (data == nullptr) throw CorruptedStreamException("null rANS input");
     const uint8_t* cursor = data;
     const uint8_t* end = data + size;
 
     if (read_value<uint32_t>(cursor, end) != kStreamMagic) {
-        throw std::runtime_error("bad rANS magic");
+        throw CorruptedStreamException("bad rANS magic");
     }
 
     const uint64_t count = read_value<uint64_t>(cursor, end);
-    if (expected_count != 0 && count != expected_count) throw std::runtime_error("length mismatch");
+    if (expected_count != 0 && count != expected_count)
+        throw CorruptedStreamException("rANS symbol count mismatch");
     if (count > std::numeric_limits<std::size_t>::max() || count > maximum_count)
-        throw std::runtime_error("unreasonable rANS symbol count");
+        throw CorruptedStreamException("unreasonable rANS symbol count");
 
     std::array<uint16_t, 256> frequencies{};
     std::array<uint16_t, 256> cumulative{};
     const uint16_t active_symbols = read_value<uint16_t>(cursor, end);
     if (active_symbols == 0 || active_symbols > 256)
-        throw std::runtime_error("invalid rANS active-symbol count");
+        throw CorruptedStreamException("invalid rANS active-symbol count");
     uint32_t frequency_sum = 0;
     for (std::size_t entry = 0; entry < active_symbols; ++entry) {
         const uint8_t symbol = read_value<uint8_t>(cursor, end);
         const uint16_t frequency = read_value<uint16_t>(cursor, end);
         if (frequency == 0 || frequencies[symbol] != 0)
-            throw std::runtime_error("invalid or duplicate rANS frequency entry");
+            throw CorruptedStreamException("invalid or duplicate rANS frequency entry");
         frequencies[symbol] = frequency;
         frequency_sum += frequency;
     }
     if (frequency_sum != SCALE_TOTAL) {
-        throw std::runtime_error("invalid frequency table");
+        throw CorruptedStreamException("invalid rANS frequency table");
     }
 
     uint32_t cumulative_value = 0;
-    for (int symbol = 0; symbol < 256; ++symbol) {
+    for (std::size_t symbol = 0; symbol < frequencies.size(); ++symbol) {
         cumulative[symbol] = static_cast<uint16_t>(cumulative_value);
         cumulative_value += frequencies[symbol];
     }
@@ -213,18 +214,18 @@ std::vector<uint8_t> InterleavedRansDecoder::decode(const uint8_t* data, std::si
     std::array<const uint8_t*, RANS_STATES> lane_streams{};
     for (unsigned lane = 0; lane < RANS_STATES; ++lane) {
         lane_streams[lane] = cursor;
-        const std::size_t byte_count = 2ULL * word_counts[lane];
-        if (static_cast<std::size_t>(end - cursor) < byte_count) {
-            throw std::runtime_error("truncated words");
-        }
+        const std::size_t remaining = static_cast<std::size_t>(end - cursor);
+        if (word_counts[lane] > remaining / 2U)
+            throw CorruptedStreamException("truncated rANS words");
+        const std::size_t byte_count = 2U * static_cast<std::size_t>(word_counts[lane]);
         cursor += byte_count;
     }
     if (cursor != end) {
-        throw std::runtime_error("trailing rANS data");
+        throw CorruptedStreamException("trailing rANS data");
     }
 
     std::array<uint8_t, SCALE_TOTAL> symbol_table{};
-    for (int symbol = 0; symbol < 256; ++symbol) {
+    for (std::size_t symbol = 0; symbol < frequencies.size(); ++symbol) {
         const unsigned limit = cumulative[symbol] + frequencies[symbol];
         for (unsigned slot = cumulative[symbol]; slot < limit; ++slot) {
             symbol_table[slot] = static_cast<uint8_t>(symbol);
@@ -238,24 +239,29 @@ std::vector<uint8_t> InterleavedRansDecoder::decode(const uint8_t* data, std::si
         const unsigned symbol = symbol_table[slot];
         output[position] = static_cast<uint8_t>(symbol);
 
-        states[lane] = static_cast<uint64_t>(frequencies[symbol]) * (states[lane] >> SCALE_BITS) +
-                       slot - cumulative[symbol];
+        const uint64_t next_state =
+            static_cast<uint64_t>(frequencies[symbol]) * (states[lane] >> SCALE_BITS) + slot -
+            cumulative[symbol];
+        if (next_state > std::numeric_limits<uint32_t>::max())
+            throw CorruptedStreamException("rANS state overflow");
+        states[lane] = static_cast<uint32_t>(next_state);
 
         while (states[lane] < kRansLowerBound) {
             if (word_positions[lane] >= word_counts[lane]) {
-                throw std::runtime_error("rANS underflow");
+                throw CorruptedStreamException("rANS underflow");
             }
 
             const uint8_t* source = lane_streams[lane] + 2 * word_positions[lane]++;
             const uint16_t word =
-                static_cast<uint16_t>(source[0]) | static_cast<uint16_t>(source[1]) << 8;
+                static_cast<uint16_t>(static_cast<uint16_t>(source[0]) |
+                                      static_cast<uint16_t>(static_cast<uint16_t>(source[1]) << 8));
             states[lane] = (states[lane] << 16) | word;
         }
     }
 
     for (unsigned lane = 0; lane < RANS_STATES; ++lane) {
         if (word_positions[lane] != word_counts[lane] || states[lane] != kRansLowerBound)
-            throw std::runtime_error("inconsistent final rANS state");
+            throw CorruptedStreamException("inconsistent final rANS state");
     }
     return output;
 }

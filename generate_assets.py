@@ -84,7 +84,7 @@ def polyline(points: Iterable[tuple[float, float]], color: str, width: int = 3) 
 def rate_distortion() -> str:
     # These reference points communicate chart semantics, not measured claims.
     series: dict[str, tuple[list[float], list[float], str]] = {
-        "AetherStream v2.2": ([2.0, 3.0, 4.0], [38, 48, 57], CYAN),
+        "AetherStream 0.0.1": ([2.0, 3.0, 4.0], [38, 48, 57], CYAN),
         "SZ3": ([2.4, 3.5, 4.7], [36, 45, 52], GREEN),
         "Zstandard shuffled": ([17.0, 20.0, 23.0], [60, 60, 60], ORANGE),
         "Uniform quantizer": ([2.0, 3.0, 4.0], [31, 39, 45], VIOLET),
@@ -109,7 +109,7 @@ def rate_distortion() -> str:
                             sum(float(row["psnr_db"]) for row in codec_rows) / len(codec_rows),
                         )
                     )
-                series["AetherStream v2.2"] = (
+                series["AetherStream 0.0.1"] = (
                     [point[0] for point in points],
                     [point[1] for point in points],
                     CYAN,

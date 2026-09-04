@@ -1,10 +1,8 @@
-<div align="center">
+# AetherStream
 
-# ⚡ AetherStream
+AetherStream compresses one-dimensional `float32` sensor data from C++20 or Python. It supports sequential streaming, indexed slices, fixed wire-rate targets, and pointwise absolute-error limits.
 
-**Indexed, SIMD-accelerated compression for streaming float32 telemetry**
-
-**v2.2.0** · Random access · Apache Arrow · Pure-Python MiniSEED-2
+**Version 0.0.1**
 
 [![PyPI](https://img.shields.io/pypi/v/aetherstream.svg?color=2563eb)](https://pypi.org/project/aetherstream/)
 [![CI and Sanitizers](https://github.com/animish-sharma/aetherstream/actions/workflows/ci.yml/badge.svg)](https://github.com/animish-sharma/aetherstream/actions/workflows/ci.yml)
@@ -13,27 +11,28 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-38bdf8.svg)](https://en.cppreference.com/w/cpp/20)
 [![Python 3.9–3.13](https://img.shields.io/badge/python-3.9%E2%80%933.13-a78bfa.svg)](https://pypi.org/project/aetherstream/)
 
-[Quickstart](#quickstart) · [Installation](#installation) · [Features](#key-features) · [Benchmarks](#benchmarks) · [Theory](#mathematical-foundation) · [C++ API](#c-api) · [Troubleshooting](#troubleshooting)
+[Quickstart](#quickstart) · [Installation](#installation) · [Features](#key-features) · [Benchmarks](#benchmarks) · [C++ API](#c-api) · [Troubleshooting](#troubleshooting)
 
 ![AetherStream compression pipeline](assets/architecture_pipeline.svg)
 
-</div>
-
----
-
 ## Overview
 
-AetherStream is an open-source C++20 and Python codec for finite, one-dimensional `float32` telemetry: seismic monitoring, strain gauges, rotating machinery, industrial sensors, and constrained edge links.
+AetherStream is intended for finite telemetry such as seismic, strain-gauge, machinery, and industrial sensor traces. Inputs must be one-dimensional and contain only finite values.
 
-It combines an **Autocorrelation-Driven Spectral Predictor (ADSP)**, online **Generalized Error Distribution (GED)** modeling, dead-zone **Entropy-Constrained Lloyd–Max (ECLM)** quantization, and a **16-state interleaved rANS** coder. Applications select either an enforced serialized-rate budget or a deterministic pointwise absolute-error bound. Stateful encoders accept micro-batches while preserving block-equivalent reconstruction.
+The encoder processes 2,048-sample blocks. It predicts each next value from reconstructed history, quantizes the prediction residual, and entropy-codes the resulting symbols with interleaved range asymmetric numeral systems (rANS). The decoder reverses these steps. You can choose one of two modes:
 
-AetherStream does not publish hardware-independent throughput promises. Run the reproducible benchmark on deployment hardware and report its generated provenance with performance claims.
+- `target_rate` limits the serialized bits per input sample. Very short inputs can be too small to fit the fixed framing overhead and raise `RateBudgetError`.
+- `absolute_error` limits the pointwise reconstruction error, subject to documented `float32` rounding tolerance.
 
-### What is new in v2.2
+`StreamEncoder` accepts input in smaller batches. An optional block index supports slices without decoding the entire frame.
 
-- **65.18× measured random-access speedup** for a 512-sample window in the local 144,000-sample EarthScope trace: 24.724 µs indexed slicing versus 1,611.45 µs full decompression.
-- **AIDX block footer** and C++/Python `decompress_slice()` APIs, while retaining compatibility with unindexed wire-format-v5 streams.
-- **Four-segment cubic ECLM evaluation** with AVX2 FMA and ARM64 Neon kernels.
+Performance depends on the processor, compiler, and input data. Run the included benchmarks on the deployment system before making performance claims.
+
+### Included in 0.0.1
+
+- **72.26× measured cached random-access speedup** for a 512-sample window in the local 144,000-sample EarthScope trace: 23.815 µs cached indexed slicing versus 1,720.753 µs full decompression (32.966 µs through the one-shot API).
+- **Wire format v6** with a CRC-protected AIDX footer, cached C++/Python indexed views, and an explicit migration policy that retains unindexed-v5 decoding while rejecting ambiguous indexed-v5 footers.
+- **Six-segment hybrid Chebyshev ECLM evaluation** with exact dead-zone/tail handling, local boundary correction, AVX2 FMA, and ARM64 Neon kernels.
 - **Native Arrow bridge** with zero-copy primitive-buffer input views and direct-to-Arrow decoding.
 - **In-tree MiniSEED-2 decoder** for live EarthScope INT16/INT32/float, Steim-1, and Steim-2 records—no ObsPy dependency.
 
@@ -46,8 +45,9 @@ AetherStream does not publish hardware-independent throughput promises. Run the 
   - Error-bounded: enforces `|x[t] - reconstructed[t]| ≤ tolerance` up to documented float32 rounding tolerance; zero runs and non-zero quanta are rANS-coded.
 - **ADSP prediction:** selects constant, harmonic, or linear prediction for each 2048-sample block.
 - **Closed-loop state:** encoder and decoder predict from reconstructed history, preventing integrated predictor drift.
-- **Indexed random access:** optional AIDX block tables let `decompress_slice()` seek to and decode only intersecting blocks without copying the compressed stream.
-- **Runtime SIMD dispatch:** scalar, x86 AVX2/FMA, x86 AVX-512, and ARM64 Neon implementations, including a four-segment cubic quantizer evaluator.
+- **Indexed random access:** optional CRC-protected AIDX block tables let `IndexedStreamView` validate once, seek in O(log N-blocks), and decode only intersecting blocks without copying the compressed stream; `decompress_slice()` remains the one-shot convenience API.
+- **Runtime SIMD dispatch:** scalar, x86 AVX2/FMA, x86 AVX-512, and ARM64 Neon implementations, including a six-segment hybrid Chebyshev quantizer evaluator and enforced quality-gate benchmark.
+- **Impulsive-tail preservation:** rate mode reserves 80% of sufficiently large low-beta codebooks for the central region and 20% for logarithmically spaced tails when observed residual peaks exceed `8σ`.
 - **Arrow interoperability:** optional PyArrow input views are compressed without copying primitive values, and decoding writes directly into Arrow-owned buffers.
 - **Dependency-free MiniSEED reader:** benchmark acquisition decodes EarthScope Steim-1/Steim-2 data without ObsPy.
 - **Incremental framing:** `StreamEncoder` and `StreamDecoder` handle sample micro-batches and arbitrary byte fragmentation.
@@ -169,7 +169,7 @@ Until the feedstock is accepted, build the included recipe with `conda build con
 include(FetchContent)
 FetchContent_Declare(aetherstream
   GIT_REPOSITORY https://github.com/animish-sharma/aetherstream.git
-  GIT_TAG v2.2.0)
+  GIT_TAG v0.0.1)
 set(AETHER_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(aetherstream)
 target_link_libraries(your_application PRIVATE aether::aether_core)
@@ -183,14 +183,14 @@ cmake --build build --parallel 1
 sudo cmake --install build
 ```
 
-Consumers can then use `find_package(AetherStream 2.2 REQUIRED CONFIG)` and `aether::aether_core`.
+Consumers can then use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and `aether::aether_core`.
 
 ### vcpkg and Docker
 
 ```bash
 vcpkg install aetherstream --overlay-ports=ports
-docker build -t aetherstream:2.2 .
-docker run --rm aetherstream:2.2
+docker build -t aetherstream:0.0.1 .
+docker run --rm aetherstream:0.0.1
 ```
 
 ## C++ API
@@ -199,12 +199,18 @@ docker run --rm aetherstream:2.2
 #include <aether/aether.hpp>
 #include <aether/table.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <numbers>
 #include <vector>
 
 int main() {
-    std::vector<float> telemetry = acquire_finite_float32_samples();
+    std::vector<float> telemetry(10'000);
+    for (std::size_t i = 0; i < telemetry.size(); ++i) {
+        telemetry[i] = std::sin(2.0f * std::numbers::pi_v<float> *
+                                static_cast<float>(i) / 100.0f);
+    }
 
     aether::CodecConfig config;
     config.target_rate = 3.0f;
@@ -268,26 +274,31 @@ python benchmarks/bench_rigorous.py
 python benchmarks/bench_random_access.py
 ```
 
-The fetcher uses `urllib.request` and an in-tree MiniSEED-2/Steim decoder; ObsPy is not required. The verified strict run downloaded 144,000 samples from `IU.ANMO.00.BHZ` and 86,343 samples from `PB.B004.T0.LS1`. Both are recorded as `EarthScope FDSN MiniSEED 2 service` in the generated manifest.
+The fetcher uses `urllib.request` and an in-tree MiniSEED-2/Steim decoder; ObsPy is not required. The verified strict run downloaded 144,000 samples from `IU.ANMO.00.BHZ`, 86,343 samples from `PB.B004.T0.LS1`, and 18,001 strong-motion samples from `CI.CCC..HNE` during the 2019 Ridgecrest Mw 7.1 mainshock. SCEDC StationXML sensitivity (`213979.6422 counts/(m/s²)`) verifies a measured peak of **0.5607 g** for the Ridgecrest trace.
 
 ### Measured AetherStream results
 
 | Dataset | Mode | Wire bits/sample | Ratio | PSNR | Encode GB/s | Decode GB/s |
 |---|---|---:|---:|---:|---:|---:|
-| IU.ANMO seismic | Rate 2 | 1.764 | 18.15× | 34.30 dB | 0.008 | 0.370 |
-| IU.ANMO seismic | Rate 3 | 2.702 | 11.84× | 43.09 dB | 0.004 | 0.388 |
-| IU.ANMO seismic | Rate 4 | 3.588 | 8.92× | 47.05 dB | 0.003 | 0.345 |
-| PB.B004 strain | Rate 2 | 1.352 | 23.67× | 15.84 dB | 0.013 | 0.499 |
-| PB.B004 strain | Rate 3 | 1.826 | 17.52× | 15.81 dB | 0.006 | 0.434 |
-| PB.B004 strain | Rate 4 | 2.253 | 14.20× | 16.59 dB | 0.004 | 0.405 |
+| CI.CCC Ridgecrest HNE | Rate 2 | 1.707 | 18.75× | 38.36 dB | 0.006 | 0.435 |
+| CI.CCC Ridgecrest HNE | Rate 3 | 2.702 | 11.84× | 42.58 dB | 0.003 | 0.358 |
+| CI.CCC Ridgecrest HNE | Rate 4 | 3.555 | 9.00× | 45.85 dB | 0.003 | 0.321 |
+| IU.ANMO seismic | Rate 2 | 1.764 | 18.15× | 24.93 dB | 0.007 | 0.418 |
+| IU.ANMO seismic | Rate 3 | 2.734 | 11.70× | 43.77 dB | 0.003 | 0.361 |
+| IU.ANMO seismic | Rate 4 | 3.705 | 8.64× | 49.04 dB | 0.002 | 0.325 |
+| PB.B004 strain | Rate 2 | 1.352 | 23.67× | 15.59 dB | 0.011 | 0.491 |
+| PB.B004 strain | Rate 3 | 1.838 | 17.41× | 16.39 dB | 0.004 | 0.451 |
+| PB.B004 strain | Rate 4 | 2.283 | 14.02× | 17.73 dB | 0.002 | 0.411 |
 
-Strict error-mode runs also met their pointwise bounds: `0.01` and `0.001` maximum absolute error on both traces. The strain rate-mode PSNR reflects the selected real trace and is reported without smoothing or omission.
+Strict error-mode runs met their `0.01` and `0.001` pointwise bounds on all traces. Ridgecrest analysis naturally triggered the tail criterion in block 7 (`beta=0.4299`, peak `9.94σ`); the adaptive partition improved that field block by **0.22 dB at rate 3** and **2.16 dB at rate 6**. Rate 4 selected the ordinary codebook through the distortion guard, avoiding a regression.
 
 ### Indexed slicing
 
-| Samples in frame | Requested window | Full decode | Indexed slice | Speedup |
+| Samples in frame | Requested window | Full decode | Cached indexed slice | Speedup |
 |---:|---:|---:|---:|---:|
-| 144,000 | 512 | 1,611.45 µs | 24.724 µs | **65.18×** |
+| 144,000 | 512 | 1,720.753 µs | 23.815 µs | **72.26×** |
+
+On the local x86-64 validation host, `bench_simd_quantizer.py` measured 133.63 Msamples/s for AVX2 versus 94.07 Msamples/s scalar (**1.42×**). Native/exact symbol disagreement was **0.0001%**, and polynomial PSNR impact was below `0.000001 dB`; the synthetic impulsive-tail case gained 0.81 dB over its ordinary GED codebook. These are host-specific measurements, not portable guarantees.
 
 The rigorous suite records data provenance and compares AetherStream with Zstandard raw/shuffled modes, uniform Lloyd–Max, and the official SZ3 executable when installed. SZ3 is omitted when its official executable is unavailable; no simulated row is reported. It writes:
 
@@ -295,6 +306,8 @@ The rigorous suite records data provenance and compares AetherStream with Zstand
 - `benchmarks/results/benchmark_results.json`
 - `benchmarks/results/pareto_frontier.png`
 - `benchmarks/results/random_access.json`
+- `benchmarks/results/simd_quantizer.json`
+- `benchmarks/results/ridgecrest_tail_validation.json`
 
 Report CPU, compiler, SIMD backend, source trace, sample count, and command line with results. Synthetic fallback traces are marked as synthetic in `benchmarks/data/manifest.json`.
 
@@ -307,9 +320,9 @@ cmake --build build --parallel 1
 ctest --test-dir build --output-on-failure
 ```
 
-The v2.2 pre-publication run passed 12 Python tests, 7 native release tests, 7 ASan/UBSan tests, C++/Python formatting and static checks, package installation, an external CMake consumer, Docker runtime validation, and a 315,132-execution indexed-decoder fuzz campaign.
+The local 0.0.1 candidate passed 15 Python tests, 7 native tests, and the same 7 tests under ASan/UBSan. Formatting, linting, type checking, strict documentation, Docker, external-consumer, packaging, and a 269,060-execution fuzz run also passed.
 
-Sanitizer and fuzzing procedures are documented in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). The normative interoperability contract is [Wire Format v2.2](docs/WIRE_FORMAT_SPEC.md), and maintainers should follow the [release checklist](docs/RELEASE_CHECKLIST.md).
+Sanitizer and fuzzing procedures are documented in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). The normative interoperability contract is [Wire Format v6](docs/WIRE_FORMAT_SPEC.md), and maintainers should follow the [release checklist](docs/RELEASE_CHECKLIST.md).
 
 ## Troubleshooting
 
@@ -346,7 +359,7 @@ Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct
   author  = {Animish Sharma and AetherStream contributors},
   title   = {AetherStream: Streaming Telemetry Compression},
   year    = {2026},
-  version = {2.2.0},
+  version = {0.0.1},
   url     = {https://github.com/animish-sharma/aetherstream}
 }
 ```

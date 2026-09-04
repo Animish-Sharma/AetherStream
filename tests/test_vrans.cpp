@@ -1,10 +1,13 @@
 #include <cassert>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include "aether/vrans_codec.hpp"
 
 int main() {
+    static_assert(std::is_base_of_v<aether::StreamError, aether::CorruptedStreamException>);
+
     std::mt19937 random(19);
     std::vector<uint8_t> symbols(100'003);
     std::vector<float> counts(256, 0.0f);
@@ -35,4 +38,20 @@ int main() {
     const auto single_result =
         aether::InterleavedRansDecoder::decode(single_stream.data(), single_stream.size(), 1);
     assert(single_result.size() == 1 && single_result[0] == 0);
+
+    bool rejected = false;
+    try {
+        static_cast<void>(aether::InterleavedRansDecoder::decode(nullptr, 0));
+    } catch (const aether::CorruptedStreamException&) {
+        rejected = true;
+    }
+    assert(rejected);
+
+    rejected = false;
+    try {
+        static_cast<void>(encoder.encode_block(symbols.data(), symbols.size(), nullptr));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    assert(rejected);
 }

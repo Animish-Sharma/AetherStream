@@ -4,10 +4,8 @@
 
 | Release line | Security support |
 |---|---|
-| 2.2.x | Supported |
-| 2.1.x | Security fixes only |
-| 2.0.x | Critical fixes through 2026-12-31 |
-| Earlier releases and wire versions 2–4 | Unsupported; transcode and upgrade |
+| 0.0.x | Supported |
+| Earlier package releases and wire versions 2–4 | Unsupported; transcode and upgrade |
 
 Security fixes are released as patch versions. A security release may reject a previously accepted malformed stream; accepting hostile input safely takes precedence over permissive compatibility.
 

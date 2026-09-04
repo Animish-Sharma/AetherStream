@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(AetherStream VERSION 2.2.0 LANGUAGES CXX)
+project(AetherStream VERSION 0.0.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -46,6 +46,7 @@ if(AETHER_ENABLE_SANITIZERS)
 endif()
 
 if(MSVC)
+    set(AETHER_WARNING_FLAGS /W4 /permissive-)
     if(AETHER_NATIVE_OPTIMIZED)
         set(AETHER_OPTIMIZATION_FLAGS /O2 /fp:fast)
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64)$")
@@ -54,7 +55,19 @@ if(MSVC)
     else()
         set(AETHER_OPTIMIZATION_FLAGS /O1 /GL-)
     endif()
-elseif(AETHER_NATIVE_OPTIMIZED)
+else()
+    set(AETHER_WARNING_FLAGS
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wshadow
+        -Wconversion
+        -Wnon-virtual-dtor
+        -Wnull-dereference
+    )
+endif()
+
+if(NOT MSVC AND AETHER_NATIVE_OPTIMIZED)
     set(AETHER_OPTIMIZATION_FLAGS -O3 -ffast-math)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
         check_cxx_compiler_flag("-mcpu=native" COMPILER_HAS_MCPU_NATIVE)
@@ -67,9 +80,9 @@ elseif(AETHER_NATIVE_OPTIMIZED)
             list(APPEND AETHER_OPTIMIZATION_FLAGS -march=native)
         endif()
     endif()
-else()
-    # Default 2GB-safe profile; AETHER_LOW_MEMORY=0 permits the toolchain's
-    # standard Release flags while still leaving LTO disabled.
+elseif(NOT MSVC)
+    # AETHER_LOW_MEMORY=0 permits the toolchain's standard Release flags while
+    # leaving LTO disabled.
     if(AETHER_ENABLE_SANITIZERS)
         set(AETHER_OPTIMIZATION_FLAGS -O1 -g -fno-lto)
     elseif(AETHER_LOW_MEMORY)
@@ -85,6 +98,7 @@ endif()
 
 set(
     AETHER_CORE_SOURCES
+    src/common.cpp
     src/predictor.cpp
     src/ged_estimator.cpp
     src/eclm_quantizer.cpp
@@ -101,7 +115,7 @@ target_include_directories(aether_core
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(aether_core PUBLIC cxx_std_20)
-target_compile_options(aether_core PRIVATE ${AETHER_OPTIMIZATION_FLAGS})
+target_compile_options(aether_core PRIVATE ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS})
 set_target_properties(
     aether_core
     PROPERTIES
@@ -123,7 +137,7 @@ if(AETHER_BUILD_PYTHON)
     if(pybind11_FOUND)
         pybind11_add_module(aether src/bindings.cpp)
         target_link_libraries(aether PRIVATE aether_core)
-        target_compile_options(aether PRIVATE ${AETHER_OPTIMIZATION_FLAGS})
+        target_compile_options(aether PRIVATE ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS})
         set_target_properties(aether PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
         if(AETHER_LIMIT_BUILD_PARALLELISM)
             set_property(TARGET aether PROPERTY JOB_POOL_COMPILE aether_compile_pool)
@@ -146,8 +160,14 @@ if(AETHER_BUILD_TESTS)
         target_link_libraries(test_${test_name} PRIVATE aether_core)
         target_compile_options(
             test_${test_name}
-            PRIVATE ${AETHER_OPTIMIZATION_FLAGS}
+            PRIVATE ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS}
         )
+        # The native tests use assert(), including in Release configurations.
+        if(MSVC)
+            target_compile_options(test_${test_name} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(test_${test_name} PRIVATE -UNDEBUG)
+        endif()
         set_target_properties(test_${test_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
         if(AETHER_LIMIT_BUILD_PARALLELISM)
             set_property(TARGET test_${test_name} PROPERTY JOB_POOL_COMPILE aether_compile_pool)

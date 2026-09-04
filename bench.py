@@ -9,9 +9,8 @@ import math
 import time
 from dataclasses import dataclass
 
-import numpy as np
-
 import aether
+import numpy as np
 
 try:
     import matplotlib.pyplot as plt

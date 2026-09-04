@@ -1,6 +1,6 @@
 import struct
 
-from benchmarks.fetch_usgs_data import decode_mseed2
+from benchmarks.fetch_usgs_data import DATASET_SOURCES, DATASETS, decode_mseed2
 
 
 def make_record(encoding, samples, packed_word, control_code):
@@ -21,6 +21,15 @@ def make_record(encoding, samples, packed_word, control_code):
     words[3] = packed_word
     struct.pack_into(">16I", record, 64, *words)
     return bytes(record)
+
+
+def test_ridgecrest_strong_motion_provenance():
+    query = DATASETS["ridgecrest_strong_motion"]
+    source = DATASET_SOURCES["ridgecrest_strong_motion"]
+    assert (query["net"], query["sta"], query["cha"]) == ("CI", "CCC", "HNE")
+    assert query["starttime"].startswith("2019-07-06T03:19")
+    assert source["counts_per_mps2"] == 213979.64220881052
+    assert "Ridgecrest" in source["event"]
 
 
 def test_decode_steim1_record():

@@ -7,13 +7,13 @@
 static double variance(const std::vector<float>& values) {
     double mean = 0.0;
     for (float v : values) mean += v;
-    mean /= values.size();
+    mean /= static_cast<double>(values.size());
     double var = 0.0;
     for (float v : values) {
         const double d = v - mean;
         var += d * d;
     }
-    return var / values.size();
+    return var / static_cast<double>(values.size());
 }
 
 int main() {

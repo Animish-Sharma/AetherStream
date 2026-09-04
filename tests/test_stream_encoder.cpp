@@ -18,6 +18,27 @@ int main() {
     const std::vector<uint8_t> batch_encoded = codec.compress(signal);
     std::vector<float> batch_decoded(signal.size());
     codec.decompress(batch_encoded, batch_decoded);
+    assert(batch_encoded[4] == aether::WIRE_FORMAT_VERSION && batch_encoded[5] == 0);
+
+    // Wire-v5 unindexed frames remain readable because their block framing is
+    // unchanged. Versions outside the explicit v5-v6 compatibility window are
+    // rejected with a dedicated exception.
+    auto legacy_unindexed = batch_encoded;
+    legacy_unindexed[4] = 5;
+    std::vector<float> legacy_decoded(signal.size());
+    codec.decompress(legacy_unindexed, legacy_decoded);
+    assert(legacy_decoded == batch_decoded);
+    for (uint8_t invalid_version : {uint8_t{4}, uint8_t{7}}) {
+        auto unsupported = batch_encoded;
+        unsupported[4] = invalid_version;
+        bool unsupported_rejected = false;
+        try {
+            codec.decompress(unsupported, legacy_decoded);
+        } catch (const aether::UnsupportedWireFormatException&) {
+            unsupported_rejected = true;
+        }
+        assert(unsupported_rejected);
+    }
 
     aether::StreamEncoder encoder(3.0f);
     std::vector<uint8_t> wire;

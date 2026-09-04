@@ -1,27 +1,36 @@
-# AetherStream Wire Format v2.2
+# AetherStream Wire Format v6
 
-Status: stable v2.2 interchange specification. Multi-byte integers and IEEE-754
+Status: stable AetherStream 0.0.1 interchange specification. Multi-byte integers and IEEE-754
 binary32 values are serialized **little-endian**. Readers must use unaligned
 loads or byte assembly; casting wire pointers to scalar pointers is forbidden.
 
 ## Compatibility
 
-The application release is 2.2. Its on-wire format-version field remains `5`;
-this version provides aligned records, empirical rate enforcement, entropy-coded
-error tokens, and a flag-negotiated optional random-access index. A reader must
-reject unknown versions and unknown flag bits. Existing field meanings never
-change, and v2.1 streams remain valid unindexed v5 streams.
-Versions 2 and 3 are intentionally rejected because they used native-endian
-fields and did not provide complete metadata integrity. Development version 4
-is rejected because it had unaligned records and raw error varints. Applications needing
-those formats must transcode with the matching historical decoder.
+AetherStream 0.0.1 writes wire version `6`. Version 6 retains the version-5
+64-byte stream header and aligned block records, and standardizes the
+CRC-protected AIDX footer used by cached indexed views.
+
+The compatibility policy is explicit:
+
+- unindexed wire-v5 streams remain readable and may be decoded directly;
+- indexed wire-v5 streams are rejected with `DeprecatedWireFormatException`
+  because earlier development builds emitted incompatible length-only and
+  CRC-trailer footer variants under the same version number;
+- indexed v5 data must be fully decoded with its matching historical release
+  and re-encoded as v6;
+- versions below 5 and above 6 raise `UnsupportedWireFormatException`;
+- unknown flag bits are corruption regardless of version.
+
+Versions 2 and 3 used native-endian fields without complete metadata integrity.
+Development version 4 used unaligned records and raw error varints. They require
+the corresponding historical decoder before migration.
 
 ## Stream header (64 bytes)
 
 | Offset | Size | Type | Meaning |
 |---:|---:|---|---|
 | 0 | 4 | u32 | Magic `0x41455448` (`48 54 45 41` on wire) |
-| 4 | 2 | u16 | Wire version, currently `5` |
+| 4 | 2 | u16 | Wire version, currently `6` |
 | 6 | 2 | u16 | Reserved; zero |
 | 8 | 8 | u64 | Total reconstructed sample count |
 | 16 | 4 | u32 | Number of blocks |
@@ -35,7 +44,7 @@ zero. The block count must equal
 
 ## Block record and alignment
 
-Every block begins at a stream-relative 64-byte boundary. A record is:
+In wire v6, every block begins at a stream-relative 64-byte boundary. A record is:
 
 1. `body_bytes` (u32)
 2. `body_bytes` bytes of block body
@@ -123,15 +132,15 @@ input scale.
 
 ## Random-access index footer
 
-When global flag bit 1 is set, an index immediately follows the final aligned
-block record. It is not padded and has this little-endian layout:
+In wire v6, when global flag bit 1 is set, an index immediately follows the
+final aligned block record. It is not padded and has this little-endian layout:
 
 | Size | Type | Meaning |
 |---:|---|---|
 | 4 | u32 | Entry count, exactly equal to the stream block count |
 | 4 | u32 | Index magic `0x41494458` |
 | 16*N | entries | One entry per block in sample order |
-| 4 | u32 | Footer length, equal to `8 + 16*N` and excluding this field |
+| 4 | u32 | CRC32-C of the entry count, index magic, and all entries |
 
 Each entry contains `byte_offset` (u64), `start_sample_index` (u32), and
 `sample_count` (u32). Offsets are stream-relative, 64-byte aligned, strictly
@@ -139,11 +148,12 @@ increasing, and must identify the exact beginning of their corresponding block
 record. Sample ranges are contiguous and cover the stream exactly. Indexed
 streams are therefore limited to `2^32-1` samples.
 
-`decompress_slice` locates the footer from the final length field, validates the
-index, binary-searches `start_sample_index`, and addresses selected block records
-directly through the caller's input span. Predictor state resets at block
-boundaries, so only blocks intersecting the requested range are entropy-decoded.
-The index header, entries, and trailer count toward the statutory wire-rate
+The footer size is derived from the block count in the fixed stream header.
+`IndexedStreamView` validates the header, footer CRC, and index semantics once,
+then binary-searches `start_sample_index` and validates/decodes only intersecting
+block records. The convenience `decompress_slice` function creates a temporary
+view. Predictor state resets at block boundaries, so no preceding block is
+needed. The index header, entries, and CRC count toward the statutory wire-rate
 budget.
 
 ## Integrity
@@ -155,4 +165,5 @@ produce the same result as the scalar algorithm; the check value for ASCII
 
 Readers validate all lengths before allocation, cap incremental buffering,
 reject non-finite metadata, and throw `aether::CorruptedStreamException` for
-malformed wire data.
+malformed wire data. Version-policy failures use the more specific deprecated
+or unsupported exceptions described above.

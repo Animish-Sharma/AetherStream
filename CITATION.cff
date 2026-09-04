@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: Sharma
     given-names: Animish
-version: 2.2.0
-date-released: 2026-09-03
+version: 0.0.1
+date-released: 2026-09-04
 license: MIT
 repository-code: https://github.com/animish-sharma/aetherstream
 url: https://github.com/animish-sharma/aetherstream

@@ -15,7 +15,7 @@ PredictorMode select_optimal_predictor(const float* block, std::size_t count,
     for (std::size_t i = 0; i < window; ++i) {
         sum += block[i];
     }
-    const double mean = sum / window;
+    const double mean = sum / static_cast<double>(window);
 
     double energy = 0.0;
     double lag_one = 0.0;
@@ -31,7 +31,7 @@ PredictorMode select_optimal_predictor(const float* block, std::size_t count,
         }
     }
 
-    const double variance = energy / window;
+    const double variance = energy / static_cast<double>(window);
     if (variance < 1e-9 || energy == 0.0) {
         return PredictorMode::CONSTANT;
     }

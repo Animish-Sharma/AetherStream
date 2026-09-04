@@ -28,21 +28,27 @@ def benchmark(
     full = aetherstream.decompress(encoded, samples.size)
     expected = full[start : start + count]
     actual = aetherstream.decompress_slice(encoded, start, count)
+    view = aetherstream.IndexedStreamView(encoded)
+    cached = view.decompress_slice(start, count)
     np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(cached, expected)
 
     full_seconds = median_seconds(
         lambda: aetherstream.decompress(encoded, samples.size), repetitions
     )
-    slice_seconds = median_seconds(
+    one_shot_seconds = median_seconds(
         lambda: aetherstream.decompress_slice(encoded, start, count), repetitions
     )
+    slice_seconds = median_seconds(lambda: view.decompress_slice(start, count), repetitions)
     return {
         "samples": int(samples.size),
         "slice_start": start,
         "slice_samples": count,
         "compressed_bytes": len(encoded),
         "full_decompression_us": full_seconds * 1e6,
+        "one_shot_slice_us": one_shot_seconds * 1e6,
         "slice_decompression_us": slice_seconds * 1e6,
+        "cached_index": True,
         "speedup": full_seconds / slice_seconds,
     }
 

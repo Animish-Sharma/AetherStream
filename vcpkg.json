@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "aetherstream",
-  "version-semver": "2.2.0",
+  "version-semver": "0.0.1",
   "description": "Dual-mode streaming float32 telemetry compression",
   "homepage": "https://github.com/animish-sharma/aetherstream",
   "license": "MIT",

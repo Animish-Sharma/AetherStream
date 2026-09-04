@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 FDSN_ENDPOINT = "https://service.earthscope.org/fdsnws/dataselect/1/query"
+SCEDC_ENDPOINT = "https://service.scedc.caltech.edu/fdsnws/dataselect/1/query"
 DATASETS = {
     "usgs_seismic": {
         "net": "IU",
@@ -30,6 +31,14 @@ DATASETS = {
         "starttime": "2024-01-01T00:00:00",
         "endtime": "2024-01-01T01:00:00",
     },
+    "ridgecrest_strong_motion": {
+        "net": "CI",
+        "sta": "CCC",
+        "loc": "",
+        "cha": "HNE",
+        "starttime": "2019-07-06T03:19:30",
+        "endtime": "2019-07-06T03:22:30",
+    },
     "usgs_strain": {
         "net": "PB",
         "sta": "B004",
@@ -38,6 +47,20 @@ DATASETS = {
         "starttime": "2024-01-01T00:00:00",
         "endtime": "2024-01-02T00:00:00",
     },
+}
+DATASET_SOURCES: dict[str, dict[str, Any]] = {
+    "ridgecrest_strong_motion": {
+        "endpoint": SCEDC_ENDPOINT,
+        # StationXML response sensitivity valid at the event time. The source
+        # channel reports acceleration in counts per m/s^2.
+        "counts_per_mps2": 213979.64220881052,
+        "event": "2019 Ridgecrest Mw 7.1 mainshock",
+        "response_source": (
+            "https://service.earthscope.org/fdsnws/station/1/query?"
+            "net=CI&sta=CCC&loc=--&cha=HNE&level=response&format=xml&"
+            "starttime=2019-07-06T03:19:30&endtime=2019-07-06T03:22:30"
+        ),
+    }
 }
 
 
@@ -220,17 +243,40 @@ def _normalize_telemetry(values: list[float | int]) -> np.ndarray:
     return np.asarray(samples / scale, dtype=np.float32)
 
 
-def fetch_mseed(query: dict[str, str], timeout: int = 60) -> tuple[np.ndarray, str]:
-    url = FDSN_ENDPOINT + "?" + urllib.parse.urlencode(query)
+def _fetch_mseed_details(
+    query: dict[str, str],
+    timeout: int = 60,
+    endpoint: str = FDSN_ENDPOINT,
+    counts_per_mps2: float | None = None,
+) -> tuple[np.ndarray, str, dict[str, float]]:
+    request_query = {key: value for key, value in query.items() if value != ""}
+    url = endpoint + "?" + urllib.parse.urlencode(request_query)
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "AetherStream/2.2 (+https://github.com/animish-sharma/aetherstream)"
+            "User-Agent": "AetherStream/2.3 (+https://github.com/animish-sharma/aetherstream)"
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = response.read()
-    return _normalize_telemetry(decode_mseed2(payload)), url
+    decoded = decode_mseed2(payload)
+    details: dict[str, float] = {}
+    if counts_per_mps2 is not None:
+        peak_counts = max(abs(float(value)) for value in decoded)
+        peak_ground_acceleration_g = peak_counts / counts_per_mps2 / 9.80665
+        if peak_ground_acceleration_g <= 0.5:
+            raise RuntimeError(
+                "Ridgecrest strong-motion trace did not meet the verified 0.5g threshold"
+            )
+        details["counts_per_mps2"] = counts_per_mps2
+        details["peak_ground_acceleration_g"] = peak_ground_acceleration_g
+    return _normalize_telemetry(decoded), url, details
+
+
+def fetch_mseed(query: dict[str, str], timeout: int = 60) -> tuple[np.ndarray, str]:
+    """Fetch a default EarthScope query, preserving the public two-value API."""
+    samples, url, _ = _fetch_mseed_details(query, timeout)
+    return samples, url
 
 
 def synthetic_fallback(name: str, count: int = 500_000) -> np.ndarray:
@@ -257,9 +303,19 @@ def fetch_all(
     destination.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, dict[str, Any]] = {}
     for name, query in DATASETS.items():
+        source_config = DATASET_SOURCES.get(name, {})
+        details: dict[str, Any] = {}
         try:
-            samples, source = fetch_mseed(query)
-            source_kind = "EarthScope FDSN MiniSEED 2 service"
+            samples, source, details = _fetch_mseed_details(
+                query,
+                endpoint=str(source_config.get("endpoint", FDSN_ENDPOINT)),
+                counts_per_mps2=source_config.get("counts_per_mps2"),
+            )
+            source_kind = (
+                "SCEDC FDSN MiniSEED 2 service"
+                if name == "ridgecrest_strong_motion"
+                else "EarthScope FDSN MiniSEED 2 service"
+            )
         except Exception as error:
             if strict:
                 raise
@@ -276,6 +332,13 @@ def fetch_all(
             "source_kind": source_kind,
             "source": source,
             "query": query,
+            **({"event": source_config["event"]} if "event" in source_config else {}),
+            **(
+                {"response_source": source_config["response_source"]}
+                if "response_source" in source_config
+                else {}
+            ),
+            **details,
         }
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest

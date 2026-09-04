@@ -2,9 +2,13 @@
 
 from aether import (
     CorruptedStreamError,
+    DeprecatedWireFormatError,
+    IndexedStreamView,
     RateBudgetError,
     StreamDecoder,
     StreamEncoder,
+    StreamError,
+    UnsupportedWireFormatError,
     __version__,
     compress,
     decompress,
@@ -14,9 +18,13 @@ from aether import (
 
 __all__ = [
     "CorruptedStreamError",
+    "DeprecatedWireFormatError",
+    "IndexedStreamView",
     "RateBudgetError",
     "StreamDecoder",
     "StreamEncoder",
+    "StreamError",
+    "UnsupportedWireFormatError",
     "__version__",
     "compress",
     "decompress",
