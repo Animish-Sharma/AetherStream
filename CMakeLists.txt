@@ -119,12 +119,18 @@ target_compile_options(aether_core PRIVATE ${AETHER_OPTIMIZATION_FLAGS} ${AETHER
 set_target_properties(
     aether_core
     PROPERTIES
-        OUTPUT_NAME aether
         INTERPROCEDURAL_OPTIMIZATION OFF
         WINDOWS_EXPORT_ALL_SYMBOLS ON
         POSITION_INDEPENDENT_CODE ON
         EXPORT_NAME aether_core
 )
+# Windows toolchains create an import library for the Python module. Give the
+# core library a distinct basename so both targets can share one output directory.
+if(WIN32)
+    set_target_properties(aether_core PROPERTIES OUTPUT_NAME aether_core)
+else()
+    set_target_properties(aether_core PROPERTIES OUTPUT_NAME aether)
+endif()
 if(AETHER_LIMIT_BUILD_PARALLELISM)
     set_property(TARGET aether_core PROPERTY JOB_POOL_COMPILE aether_compile_pool)
     set_property(TARGET aether_core PROPERTY JOB_POOL_LINK aether_link_pool)
