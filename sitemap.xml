@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://animish-sharma.github.io/aetherstream/</loc>
+         <loc>https://animish-sharma.github.io/AetherStream/</loc>
          <lastmod>2026-09-04</lastmod>
     </url>
     <url>
-         <loc>https://animish-sharma.github.io/aetherstream/API_REFERENCE/</loc>
+         <loc>https://animish-sharma.github.io/AetherStream/API_REFERENCE/</loc>
          <lastmod>2026-09-04</lastmod>
     </url>
     <url>
-         <loc>https://animish-sharma.github.io/aetherstream/INSTALLATION/</loc>
+         <loc>https://animish-sharma.github.io/AetherStream/INSTALLATION/</loc>
          <lastmod>2026-09-04</lastmod>
     </url>
     <url>
-         <loc>https://animish-sharma.github.io/aetherstream/RELEASE_CHECKLIST/</loc>
+         <loc>https://animish-sharma.github.io/AetherStream/RELEASE_CHECKLIST/</loc>
          <lastmod>2026-09-04</lastmod>
     </url>
     <url>
-         <loc>https://animish-sharma.github.io/aetherstream/WIRE_FORMAT_SPEC/</loc>
+         <loc>https://animish-sharma.github.io/AetherStream/WIRE_FORMAT_SPEC/</loc>
          <lastmod>2026-09-04</lastmod>
     </url>
 </urlset>
