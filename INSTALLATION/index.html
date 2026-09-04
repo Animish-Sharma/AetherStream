@@ -508,6 +508,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#go-and-rust-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go and Rust bindings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#vcpkg" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -711,6 +722,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#go-and-rust-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go and Rust bindings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#vcpkg" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -801,7 +823,21 @@ python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </sp
 cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--parallel<span class="w"> </span><span class="m">1</span>
 cmake<span class="w"> </span>--install<span class="w"> </span>build<span class="w"> </span>--prefix<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local"</span>
 </code></pre></div>
-<p>Consumers use <code>find_package(AetherStream 0.0.1 REQUIRED CONFIG)</code> and link <code>aether::aether_core</code>.</p>
+<p>Consumers use <code>find_package(AetherStream 0.0.1 REQUIRED CONFIG)</code> and link
+<code>aether::aether_core</code>, <code>aether::aether_c</code>, <code>aether::aether_c_static</code>, or
+<code>aether::aether_tsdb</code>.</p>
+<h2 id="go-and-rust-bindings">Go and Rust bindings</h2>
+<p>Build the shared C ABI in the conventional root <code>build</code> directory before
+running the cgo tests:</p>
+<div class="highlight"><pre><span></span><code>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DAETHER_BUILD_PYTHON<span class="o">=</span>OFF
+cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--parallel<span class="w"> </span><span class="m">1</span>
+<span class="nb">cd</span><span class="w"> </span>bindings/go/aether<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-v<span class="w"> </span>.
+</code></pre></div>
+<p>The Rust crate compiles a private static copy of the native core:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>bindings/rust
+<span class="nv">CARGO_BUILD_JOBS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>cargo<span class="w"> </span><span class="nb">test</span>
+</code></pre></div>
+<p>Go 1.22+, Rust 1.74+, and a C++20 compiler are required.</p>
 <h2 id="vcpkg">vcpkg</h2>
 <p>Use the repository as an overlay port:</p>
 <div class="highlight"><pre><span></span><code>vcpkg<span class="w"> </span>install<span class="w"> </span>aetherstream<span class="w"> </span>--overlay-ports<span class="o">=</span>ports

@@ -612,6 +612,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#stable-c-abi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable C ABI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rust
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tsdb-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TSDB bridge
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -833,6 +877,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#stable-c-abi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable C ABI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rust
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tsdb-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TSDB bridge
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -917,6 +1005,40 @@ one-shot <code>decompress_slice</code> convenience function.</p>
 <li><code>GedEstimator</code>, <code>ECLMQuantizer</code>, <code>InterleavedRansEncoder/Decoder</code>: lower-level research interfaces.</li>
 </ul>
 <p>All spans are borrowed for the duration of a call. Returned vectors own their storage. No API accepts NaN or infinity as telemetry input.</p>
+<h2 id="stable-c-abi">Stable C ABI</h2>
+<p>Include <code>&lt;aether/c_api.h&gt;</code> and link the shared <code>aether::aether_c</code> target (or
+<code>aether::aether_c_static</code> for static linking). <code>AETHER_C_ABI_VERSION</code> is <code>1</code>.
+The ABI exports batch compression, full decompression, indexed slice decoding,
+version discovery, and stable status strings. Every output buffer is owned by
+the caller, and no C++ exception can cross the ABI boundary.</p>
+<p><code>aether_compress</code> writes the required byte count to <code>bytes_written</code> when it
+returns <code>AETHER_ERR_BUFFER_TOO_SMALL</code>. A non-null one-byte probe can therefore
+be passed with capacity zero before allocating the final output. Likewise,
+<code>aether_decompress</code> reports the embedded sample count through <code>samples_written</code>.
+All pointer parameters must be non-null, even when their corresponding capacity
+is zero. Wire format v6 always stores and validates CRC32-C; <code>enable_crc</code> is
+retained in ABI v1 for source compatibility and must contain either zero or one.</p>
+<h2 id="go">Go</h2>
+<p>The module is under <code>bindings/go</code>, with package
+<code>github.com/Animish-Sharma/AetherStream/bindings/go/aether</code>. Build the CMake
+<code>aether_c</code> target in the repository's <code>build</code> directory before running or
+linking the cgo package. <code>DefaultConfig</code>, <code>Compress</code>, <code>Decompress</code>, and
+<code>DecompressSlice</code> map native failures to <code>*aether.StatusError</code>. Input and output
+slices are passed directly across cgo without staging copies.</p>
+<h2 id="rust">Rust</h2>
+<p>The crate under <code>bindings/rust</code> exposes <code>Config</code>, <code>ConfigBuilder</code>, <code>compress</code>,
+<code>decompress</code>, and <code>decompress_slice</code>. Its build script compiles the C++ core and
+C ABI into a private static library, so an external system installation is not
+required. Native failures are represented by the exhaustive <code>AetherError</code>
+enum; no unsafe API is public.</p>
+<h2 id="tsdb-bridge">TSDB bridge</h2>
+<p>Include <code>&lt;aether/tsdb/influx_line_codec.hpp&gt;</code> and link
+<code>aether::aether_tsdb</code>. <code>encode_influx_lines</code> parses ordered InfluxDB
+line-protocol points, while <code>encode_prometheus_chunk</code> accepts timestamps and
+values extracted from one Prometheus remote-write series. Both produce an
+<code>ATDB</code> payload containing a 4-byte magic, 16-byte timestamp metadata,
+delta-of-delta varints, and one AetherStream wire frame. <code>decode_chunk</code> validates
+and reconstructs both vectors.</p>
 
 
 
