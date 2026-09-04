@@ -1,0 +1,28 @@
+\IfFileExists{IEEEtran.cls}{\documentclass[10pt,journal]{IEEEtran}}{\documentclass[10pt,twocolumn]{article}}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{url}
+
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newcommand{\Aether}{AetherStream}
+
+\title{AetherStream: Rate-Constrained Predictive Compression for Streaming Telemetry}
+\author{Anonymous manuscript for artifact evaluation}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+We study bounded-memory predictive compression of floating-point telemetry under explicit wire-rate and pointwise-error constraints. The artifact combines closed-loop prediction, entropy-constrained scalar quantization, interleaved asymmetric numeral systems, indexed random access, physical-signal fidelity metrics, and hardware-counter profiling. All reported plots are generated from executable experiments and preserve the distinction between measured values, analytical bounds, and modeled operation counts.
+\end{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_theoretical_bounds}
+\input{sections/03_architecture}
+\input{sections/04_experimental_results}
+
+\IfFileExists{IEEEtran.bst}{\bibliographystyle{IEEEtran}}{\bibliographystyle{unsrt}}
+\bibliography{references}
+\end{document}

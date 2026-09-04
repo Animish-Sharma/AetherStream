@@ -9,6 +9,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Safe Go and Rust bindings with round-trip, corruption, indexed-slice, race, and benchmark coverage.
 - InfluxDB line-protocol and Prometheus series chunk adapters with delta-of-delta timestamp coding.
 - Cross-compiler Linux, macOS, and Windows CI plus a scheduled ten-minute ASan/UBSan libFuzzer run.
+- Academic metrics for GED Shannon bounds, Welch log-spectral distance, phase jitter, and extremal peak error.
+- Linux hardware-counter and Roofline profiling with permission-aware fallback measurements.
+- Reproducible IEEE-column vector figures and a compile-ready mathematical manuscript.
 
 ## [0.0.1] - 2026-09-04
 

@@ -57,12 +57,12 @@ sdist.include = [
   "LICENSE", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
   "SECURITY.md", "CITATION.cff", "Dockerfile", "CMakePresets.json", ".clang-format",
   ".gitattributes", "generate_assets.py",
-  "docs/**", "assets/**", "tests/**", "fuzz/**", "benchmarks/*.py", "scripts/**", ".github/**",
+  "docs/**", "assets/**", "tests/**", "fuzz/**", "benchmarks/*.py", "paper/**", "scripts/**", ".github/**",
   "conda-recipe/**", "ports/**", "vcpkg.json", "requirements*.txt",
 ]
 sdist.exclude = [
   ".venv", "build", "build-*", "build-v2", "dist", "site", "install-package",
-  "benchmarks/data", "benchmarks/results", "__pycache__", ".pytest_cache",
+  "benchmarks/data", "benchmarks/results", "paper/figures", "paper/paper.pdf", "__pycache__", ".pytest_cache",
   "*.so", "*.png",
 ]
 build-dir = "build/{wheel_tag}"

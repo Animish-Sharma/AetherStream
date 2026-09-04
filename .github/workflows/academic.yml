@@ -1,0 +1,60 @@
+name: Academic artifact
+
+on:
+  push:
+    branches: [research/v2.4-academic]
+    paths:
+      - "benchmarks/**"
+      - "paper/**"
+      - "tests/test_research_metrics.py"
+      - ".github/workflows/academic.yml"
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "paper/**"
+      - "tests/test_research_metrics.py"
+      - ".github/workflows/academic.yml"
+  workflow_dispatch:
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    env:
+      AETHER_LOW_MEMORY: "1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python and LaTeX dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y latexmk texlive-publishers texlive-latex-extra poppler-utils
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e . --no-build-isolation
+      - name: Validate research metrics
+        run: python -m pytest tests/test_research_metrics.py -v
+      - name: Generate numerical reports
+        run: |
+          python benchmarks/theoretical_bounds.py --output benchmarks/results/theoretical_bounds.json
+          python benchmarks/spectral_metrics.py --output benchmarks/results/spectral_metrics.json
+          python benchmarks/profile_hardware.py --samples 65536 --iterations 2
+      - name: Generate IEEE figures and manuscript
+        run: |
+          python benchmarks/generate_paper_plots.py
+          make -C paper PYTHON="$(command -v python)"
+          test -s paper/paper.pdf
+          pdfinfo paper/paper.pdf | grep -q '^Pages:'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aetherstream-academic-artifact
+          path: |
+            paper/paper.pdf
+            paper/figures/*.pdf
+            benchmarks/results/theoretical_bounds.json
+            benchmarks/results/spectral_metrics.json
+            benchmarks/results/hardware_profile.json
+          if-no-files-found: error

@@ -5,7 +5,7 @@ recursive-include cmake *.cmake.in
 recursive-include assets *.svg
 recursive-include conda-recipe *
 recursive-include ports *
-recursive-include include *.hpp
+recursive-include include *.hpp *.h
 recursive-include src *.cpp
 recursive-include python *.py
 recursive-include tests *.cpp *.py
@@ -13,3 +13,4 @@ recursive-include tests/corpus *
 recursive-include docs *.md
 recursive-include fuzz CMakeLists.txt *.cpp
 recursive-include benchmarks *.py
+recursive-include paper Makefile *.tex *.bib

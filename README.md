@@ -330,6 +330,24 @@ The rigorous suite records data provenance and compares AetherStream with Zstand
 
 Report CPU, compiler, SIMD backend, source trace, sample count, and command line with results. Synthetic fallback traces are marked as synthetic in `benchmarks/data/manifest.json`.
 
+### Academic artifact
+
+The [research artifact guide](docs/RESEARCH_ARTIFACT.md) covers the normalized
+GED Shannon lower bound, rate-slack decomposition, Welch log-spectral distance,
+phase-arrival jitter, peak preservation, Linux `perf` counters, Roofline
+analysis, and IEEE-width vector figures.
+
+```bash
+python benchmarks/theoretical_bounds.py
+python benchmarks/spectral_metrics.py
+python benchmarks/profile_hardware.py
+python benchmarks/generate_paper_plots.py
+make -C paper PYTHON="$(pwd)/.venv/bin/python"
+```
+
+Generated result files, figures, and `paper/paper.pdf` are reproducible build
+artifacts and are not committed.
+
 ## Testing and security
 
 ```bash

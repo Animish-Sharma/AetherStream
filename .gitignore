@@ -7,7 +7,7 @@ cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
+/Makefile
 compile_commands.json
 *.o
 *.obj
@@ -37,6 +37,15 @@ rate_distortion_curve.png
 v2_benchmark_results.png
 benchmarks/data/
 benchmarks/results/
+paper/figures/
+paper/paper.pdf
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
 
 # Editor / OS files
 .vscode/

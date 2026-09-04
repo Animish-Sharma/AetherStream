@@ -30,6 +30,7 @@ nav:
   - Home: index.md
   - Installation: INSTALLATION.md
   - API Reference: API_REFERENCE.md
+  - Research Artifact: RESEARCH_ARTIFACT.md
   - Wire Format: WIRE_FORMAT_SPEC.md
   - Release Checklist: RELEASE_CHECKLIST.md
 

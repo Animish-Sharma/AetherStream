@@ -1,0 +1,100 @@
+\section{Analytical Properties}
+
+Let $x_t$ denote the source, $\widetilde{x}_t$ its reconstruction, and $P_t(\widetilde{x}_{<t})$ a predictor evaluated from previously reconstructed samples at both encoder and decoder. Define
+\begin{equation}
+ r_t=x_t-P_t(\widetilde{x}_{<t}),\qquad
+ \widehat r_t=Q(r_t),\qquad q_t=\widehat r_t-r_t.
+\end{equation}
+The decoder forms $\widetilde{x}_t=P_t(\widetilde{x}_{<t})+\widehat r_t$.
+
+\begin{lemma}[Closed-loop non-accumulation]
+For every sample decoded from a common initial state, the reconstruction error $\varepsilon_t=x_t-\widetilde{x}_t$ satisfies $\varepsilon_t=-q_t$.
+\end{lemma}
+\begin{proof}
+We use induction on $t$. At $t=0$, encoder and decoder use the same specified initial state, hence the same value $P_0$. Substitution gives
+\begin{align}
+ \varepsilon_0
+ &=x_0-\left(P_0+Q(x_0-P_0)\right)\\
+ &=r_0-\widehat r_0=-q_0.
+\end{align}
+Assume that samples $0,\ldots,t-1$ have been reconstructed and that the encoder fed those reconstructions, rather than the original samples, back into its state. The encoder and decoder histories are therefore identical bit for bit. Determinism of $P_t$ implies that both sides obtain the same prediction $P_t(\widetilde{x}_{<t})$. Consequently,
+\begin{align}
+ \varepsilon_t
+ &=x_t-P_t(\widetilde{x}_{<t})-Q\!\left(x_t-P_t(\widetilde{x}_{<t})\right)\\
+ &=r_t-\widehat r_t=-q_t.
+\end{align}
+Thus the statement holds at $t$, completing the induction. No sum of past quantization errors appears in the result.
+\end{proof}
+
+\begin{lemma}[BIBO reconstruction stability]
+If $|q_t|\leq q_{\max}$, then $|x_t-\widetilde{x}_t|\leq q_{\max}$ for bounded inputs, including finite step transitions.
+\end{lemma}
+\begin{proof}
+Lemma~1 gives the pointwise identity $x_t-\widetilde{x}_t=-q_t$ before and after a transition. Taking absolute values yields
+$|x_t-\widetilde{x}_t|=|q_t|\leq q_{\max}$.
+For an input bounded by $|x_t|\leq X$, the triangle inequality also gives
+$|\widetilde{x}_t|\leq X+q_{\max}$, so the reconstructed output is bounded. A step may create a large instantaneous residual because the predictor still reflects the previous regime; it cannot create accumulated output error because that residual is quantized and closed through the same reconstructed state. The argument does not require differentiability or stationarity of the input.
+\end{proof}
+
+\begin{theorem}[Online GED parameter estimation]
+For the zero-mean generalized-error density
+\begin{equation}
+ f(r)=\frac{\beta}{2\alpha\Gamma(1/\beta)}
+ \exp\!\left[-\left(\frac{|r|}{\alpha}\right)^\beta\right],
+\end{equation}
+the moment ratio $R(\beta)=m_1^2/m_2$ is independent of $\alpha$ and equals
+\begin{equation}
+ R(\beta)=\frac{\Gamma(2/\beta)^2}
+ {\Gamma(1/\beta)\Gamma(3/\beta)}.
+\end{equation}
+\end{theorem}
+\begin{proof}
+Symmetry and the substitution $u=(r/\alpha)^\beta$ give, for $k>-1$,
+\begin{align}
+ \mathbb E|r|^k
+ &=\frac{\beta}{\alpha\Gamma(1/\beta)}
+   \int_0^\infty r^k e^{-(r/\alpha)^\beta}\,dr\\
+ &=\alpha^k\frac{\Gamma((k+1)/\beta)}{\Gamma(1/\beta)}.
+\end{align}
+Hence $m_1=\alpha\Gamma(2/\beta)/\Gamma(1/\beta)$ and
+$m_2=\alpha^2\Gamma(3/\beta)/\Gamma(1/\beta)$. Forming $m_1^2/m_2$ cancels $\alpha^2$, proving scale invariance. An online estimator accumulates $|r_t|$ and $r_t^2$, solves the one-dimensional equation $R(\widehat\beta)=\widehat m_1^2/\widehat m_2$ on the admitted shape interval, and then recovers
+$\widehat\alpha=\sqrt{\widehat m_2\Gamma(1/\widehat\beta)/\Gamma(3/\widehat\beta)}$.
+\end{proof}
+
+\begin{theorem}[Entropy-constrained Lloyd--Max boundary]
+Let adjacent reconstruction levels be $y_i<y_{i+1}$ with probabilities $p_i$ and $p_{i+1}$. A stationary boundary of the entropy-constrained squared-error Lagrangian obeys
+\begin{equation}
+ b_i=\frac{y_i+y_{i+1}}{2}
+ +\frac{\lambda}{2(y_{i+1}-y_i)}
+ \log_2\!\left(\frac{p_i}{p_{i+1}}\right),
+\end{equation}
+where $\lambda$ uses distortion units per bit.
+\end{theorem}
+\begin{proof}
+Write the Lagrangian as
+$J=\sum_j\int_{\mathcal C_j}(r-y_j)^2f(r)\,dr+\lambda H$,
+with $H=-\sum_jp_j\log_2p_j$. Moving only $b_i$ by $db$ transfers probability mass $f(b_i)db$ from cell $i+1$ to cell $i$. The distortion derivative is
+\begin{equation}
+ f(b_i)\left[(b_i-y_i)^2-(b_i-y_{i+1})^2\right].
+\end{equation}
+The entropy derivative, after cancellation of the equal constant terms from the two cells, is
+$f(b_i)\log_2(p_{i+1}/p_i)$. Stationarity and division by positive $f(b_i)$ give
+\begin{equation}
+ (b_i-y_i)^2-(b_i-y_{i+1})^2
+ +\lambda\log_2\!\left(\frac{p_{i+1}}{p_i}\right)=0.
+\end{equation}
+Expanding the squares yields
+$2(y_{i+1}-y_i)b_i+y_i^2-y_{i+1}^2$ for the first difference. Solving for $b_i$ gives the stated equation. Alternating this boundary update with centroid reconstruction levels is the entropy-constrained Lloyd--Max iteration~\cite{lloyd1982least,max1960quantizing}.
+\end{proof}
+
+\subsection{Shannon lower bound}
+The normalized GED entropy in nats is
+\begin{equation}
+ h(f)=\frac{1}{\beta}-\ln\beta+\ln(2\alpha)+\ln\Gamma(1/\beta).
+\end{equation}
+The factor two is already present in the normalizing density; counting a second $\ln2$ would violate normalization and the Gaussian equality case. Under mean-squared distortion $D>0$, the Shannon lower bound is
+\begin{equation}
+ R_{\mathrm{SLB}}(D)=\max\left\{0,\frac{h(f)-\frac12\ln(2\pi eD)}{\ln2}\right\}.
+\end{equation}
+For $\beta=2$ and $\alpha=\sqrt{2}\sigma$, this reduces exactly to
+$\max\{0,\frac12\log_2(\sigma^2/D)\}$~\cite{shannon1959coding,cover2006elements}.
