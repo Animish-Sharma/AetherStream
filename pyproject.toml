@@ -37,7 +37,7 @@ benchmark = ["matplotlib>=3.5", "zstandard>=0.21"]
 
 [project.urls]
 Homepage = "https://github.com/animish-sharma/aetherstream"
-Documentation = "https://animish-sharma.github.io/aetherstream/"
+Documentation = "https://animish-sharma.github.io/AetherStream/"
 Issues = "https://github.com/animish-sharma/aetherstream/issues"
 Source = "https://github.com/animish-sharma/aetherstream"
 

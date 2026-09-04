@@ -48,7 +48,7 @@ about:
     AetherStream provides exact wire-rate and pointwise absolute-error modes,
     ADSP prediction, rANS coding, incremental streams, and runtime SIMD dispatch.
   dev_url: https://github.com/animish-sharma/aetherstream
-  doc_url: https://animish-sharma.github.io/aetherstream/
+  doc_url: https://animish-sharma.github.io/AetherStream/
 
 extra:
   recipe-maintainers:

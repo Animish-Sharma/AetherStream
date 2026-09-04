@@ -254,7 +254,7 @@ def _fetch_mseed_details(
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "AetherStream/2.3 (+https://github.com/animish-sharma/aetherstream)"
+            "User-Agent": "AetherStream/0.0.1 (+https://github.com/animish-sharma/aetherstream)"
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
