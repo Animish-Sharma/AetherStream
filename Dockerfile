@@ -31,7 +31,7 @@ RUN MPLBACKEND=Agg /opt/venv/bin/python bench.py \
     && /opt/venv/bin/python generate_assets.py \
     && /opt/venv/bin/python -m build --wheel --no-isolation --outdir /dist
 
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 COPY --from=build /dist /dist
 RUN python -m pip install --no-cache-dir /dist/*.whl && rm -rf /dist
 WORKDIR /work
