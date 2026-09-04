@@ -34,7 +34,7 @@ jobs:
       CXX: ${{ matrix.cxx }}
       AETHER_PARALLEL_BUILD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -59,7 +59,7 @@ jobs:
   docs-and-style:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -81,7 +81,7 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DAETHER_ENABLE_SANITIZERS=ON -DAETHER_BUILD_TESTS=ON -DAETHER_BUILD_PYTHON=OFF
       - run: cmake --build build-asan --parallel 1
       - run: ctest --test-dir build-asan --output-on-failure
