@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM silkeh/clang:16-bookworm AS build
+FROM silkeh/clang:22-bookworm AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CC=clang \
