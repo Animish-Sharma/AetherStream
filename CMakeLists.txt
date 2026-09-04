@@ -47,13 +47,22 @@ endif()
 
 if(MSVC)
     set(AETHER_WARNING_FLAGS /W4 /permissive-)
+    # Visual Studio is a multi-config generator. Apply optimization only to
+    # Release-like configurations so Debug's /RTC1 checks remain compatible.
     if(AETHER_NATIVE_OPTIMIZED)
-        set(AETHER_OPTIMIZATION_FLAGS /O2 /fp:fast)
+        set(AETHER_OPTIMIZATION_FLAGS
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            $<$<NOT:$<CONFIG:Debug>>:/fp:fast>
+        )
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64)$")
-            list(APPEND AETHER_OPTIMIZATION_FLAGS /arch:AVX2)
+            list(APPEND AETHER_OPTIMIZATION_FLAGS
+                $<$<NOT:$<CONFIG:Debug>>:/arch:AVX2>)
         endif()
     else()
-        set(AETHER_OPTIMIZATION_FLAGS /O1 /GL-)
+        set(AETHER_OPTIMIZATION_FLAGS
+            $<$<NOT:$<CONFIG:Debug>>:/O1>
+            /GL-
+        )
     endif()
 else()
     set(AETHER_WARNING_FLAGS

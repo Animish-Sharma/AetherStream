@@ -48,13 +48,13 @@ jobs:
       - run: python -m pytest -v tests
       - name: Configure native tests
         run: cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DAETHER_BUILD_TESTS=ON -DAETHER_BUILD_PYTHON=OFF
-      - run: cmake --build build-ci --parallel 1
-      - run: ctest --test-dir build-ci --output-on-failure
+      - run: cmake --build build-ci --config Release --parallel 1
+      - run: ctest --test-dir build-ci -C Release --output-on-failure
       - name: Scalar parity
         shell: bash
-        run: AETHER_SIMD=scalar ctest --test-dir build-ci --output-on-failure
+        run: AETHER_SIMD=scalar ctest --test-dir build-ci -C Release --output-on-failure
       - name: Verify installable CMake package
-        run: cmake --install build-ci --prefix install-ci
+        run: cmake --install build-ci --config Release --prefix install-ci
 
   docs-and-style:
     runs-on: ubuntu-24.04
