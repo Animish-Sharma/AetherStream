@@ -6,10 +6,11 @@
 
 #include "aether/c_api.h"
 
-_Static_assert(AETHER_OK == 0 && AETHER_ERR_INTERNAL == 6, "C status ABI changed");
-_Static_assert(sizeof(aether_config_t) == 16, "C config ABI changed");
-_Static_assert(offsetof(aether_config_t, enable_crc) == 12, "C config layout changed");
-_Static_assert(offsetof(aether_config_t, enable_index) == 13, "C config layout changed");
+#define AETHER_COMPILE_ASSERT(name, expression) typedef char name[(expression) ? 1 : -1]
+AETHER_COMPILE_ASSERT(aether_status_abi_changed, AETHER_OK == 0 && AETHER_ERR_INTERNAL == 6);
+AETHER_COMPILE_ASSERT(aether_config_size_changed, sizeof(aether_config_t) == 16);
+AETHER_COMPILE_ASSERT(aether_crc_offset_changed, offsetof(aether_config_t, enable_crc) == 12);
+AETHER_COMPILE_ASSERT(aether_index_offset_changed, offsetof(aether_config_t, enable_index) == 13);
 
 int main(void) {
     const size_t count = 8192;

@@ -48,7 +48,10 @@ if(AETHER_ENABLE_SANITIZERS)
 endif()
 
 if(MSVC)
-    set(AETHER_WARNING_FLAGS /W4 /permissive-)
+    # C4065 is expected when compile-time SIMD gates leave only the scalar
+    # default branch. getenv is read-only here and does not expose writable storage.
+    set(AETHER_WARNING_FLAGS /W4 /permissive- /wd4065)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     # Visual Studio is a multi-config generator. Apply optimization only to
     # Release-like configurations so Debug's /RTC1 checks remain compatible.
     if(AETHER_NATIVE_OPTIMIZED)
@@ -255,6 +258,9 @@ if(AETHER_BUILD_TESTS)
 
     if(AETHER_BUILD_C_API)
         add_executable(test_c_api tests/test_c_api.c)
+        # Compile the test as C while using the C++ linker so sanitizer builds
+        # pull in the C++ UBSan runtime required by the wrapped core.
+        set_target_properties(test_c_api PROPERTIES LINKER_LANGUAGE CXX)
         target_link_libraries(test_c_api PRIVATE aether_c)
         if(MSVC)
             target_compile_options(test_c_api PRIVATE /UNDEBUG)
