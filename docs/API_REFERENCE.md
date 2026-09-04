@@ -86,3 +86,46 @@ one-shot `decompress_slice` convenience function.
 - `GedEstimator`, `ECLMQuantizer`, `InterleavedRansEncoder/Decoder`: lower-level research interfaces.
 
 All spans are borrowed for the duration of a call. Returned vectors own their storage. No API accepts NaN or infinity as telemetry input.
+
+## Stable C ABI
+
+Include `<aether/c_api.h>` and link the shared `aether::aether_c` target (or
+`aether::aether_c_static` for static linking). `AETHER_C_ABI_VERSION` is `1`.
+The ABI exports batch compression, full decompression, indexed slice decoding,
+version discovery, and stable status strings. Every output buffer is owned by
+the caller, and no C++ exception can cross the ABI boundary.
+
+`aether_compress` writes the required byte count to `bytes_written` when it
+returns `AETHER_ERR_BUFFER_TOO_SMALL`. A non-null one-byte probe can therefore
+be passed with capacity zero before allocating the final output. Likewise,
+`aether_decompress` reports the embedded sample count through `samples_written`.
+All pointer parameters must be non-null, even when their corresponding capacity
+is zero. Wire format v6 always stores and validates CRC32-C; `enable_crc` is
+retained in ABI v1 for source compatibility and must contain either zero or one.
+
+## Go
+
+The module is under `bindings/go`, with package
+`github.com/Animish-Sharma/AetherStream/bindings/go/aether`. Build the CMake
+`aether_c` target in the repository's `build` directory before running or
+linking the cgo package. `DefaultConfig`, `Compress`, `Decompress`, and
+`DecompressSlice` map native failures to `*aether.StatusError`. Input and output
+slices are passed directly across cgo without staging copies.
+
+## Rust
+
+The crate under `bindings/rust` exposes `Config`, `ConfigBuilder`, `compress`,
+`decompress`, and `decompress_slice`. Its build script compiles the C++ core and
+C ABI into a private static library, so an external system installation is not
+required. Native failures are represented by the exhaustive `AetherError`
+enum; no unsafe API is public.
+
+## TSDB bridge
+
+Include `<aether/tsdb/influx_line_codec.hpp>` and link
+`aether::aether_tsdb`. `encode_influx_lines` parses ordered InfluxDB
+line-protocol points, while `encode_prometheus_chunk` accepts timestamps and
+values extracted from one Prometheus remote-write series. Both produce an
+`ATDB` payload containing a 4-byte magic, 16-byte timestamp metadata,
+delta-of-delta varints, and one AetherStream wire frame. `decode_chunk` validates
+and reconstructs both vectors.

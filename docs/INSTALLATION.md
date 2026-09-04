@@ -57,7 +57,29 @@ cmake --build build --parallel 1
 cmake --install build --prefix "$HOME/.local"
 ```
 
-Consumers use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and link `aether::aether_core`.
+Consumers use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and link
+`aether::aether_core`, `aether::aether_c`, `aether::aether_c_static`, or
+`aether::aether_tsdb`.
+
+## Go and Rust bindings
+
+Build the shared C ABI in the conventional root `build` directory before
+running the cgo tests:
+
+```bash
+cmake -S . -B build -DAETHER_BUILD_PYTHON=OFF
+cmake --build build --parallel 1
+cd bindings/go/aether && go test -v .
+```
+
+The Rust crate compiles a private static copy of the native core:
+
+```bash
+cd bindings/rust
+CARGO_BUILD_JOBS=1 cargo test
+```
+
+Go 1.22+, Rust 1.74+, and a C++20 compiler are required.
 
 ## vcpkg
 

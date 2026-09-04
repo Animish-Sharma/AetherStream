@@ -1,0 +1,59 @@
+name: Continuous fuzzing
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  libfuzzer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CC: clang-17
+      CXX: clang++-17
+      AETHER_LOW_MEMORY: "1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang 17, CMake, and Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 cmake ninja-build
+      - name: Configure libFuzzer with ASan and UBSan
+        run: >-
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-17
+          -DCMAKE_CXX_COMPILER=clang++-17
+          -DAETHER_BUILD_FUZZERS=ON
+          -DAETHER_BUILD_PYTHON=OFF
+          -DAETHER_BUILD_C_API=OFF
+          -DAETHER_BUILD_TSDB_BRIDGE=OFF
+          -DAETHER_LOW_MEMORY=ON
+      - name: Build fuzz target
+        run: cmake --build build-fuzz --target fuzz_decompress --parallel 1
+      - name: Fuzz decompression for ten minutes
+        run: >-
+          ./build-fuzz/fuzz/fuzz_decompress tests/corpus
+          -max_total_time=600
+          -timeout=10
+          -rss_limit_mb=1536
+          -print_final_stats=1
+          -artifact_prefix=${{ runner.temp }}/
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libfuzzer-crash-artifacts
+          path: |
+            ${{ runner.temp }}/crash-*
+            ${{ runner.temp }}/leak-*
+            ${{ runner.temp }}/timeout-*
+            ${{ runner.temp }}/oom-*
+          if-no-files-found: ignore

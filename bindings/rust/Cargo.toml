@@ -1,0 +1,15 @@
+[package]
+name = "aetherstream"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Safe Rust bindings for the AetherStream time-series codec"
+repository = "https://github.com/Animish-Sharma/AetherStream"
+links = "aether_c_rust"
+
+[lib]
+path = "src/lib.rs"
+
+[build-dependencies]
+cc = "1.1"

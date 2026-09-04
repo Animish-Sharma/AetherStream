@@ -1,0 +1,20 @@
+{
+  "abi_version": 1,
+  "config_size": 16,
+  "config_offsets": {
+    "target_rate": 0,
+    "absolute_error_bound": 4,
+    "deadzone_factor": 8,
+    "enable_crc": 12,
+    "enable_index": 13
+  },
+  "status_values": [0, 1, 2, 3, 4, 5, 6],
+  "symbols": [
+    "aether_compress",
+    "aether_decompress",
+    "aether_decompress_slice",
+    "aether_c_abi_version",
+    "aether_version_string",
+    "aether_status_to_string"
+  ]
+}

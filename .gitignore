@@ -30,6 +30,7 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+target/
 
 # Generated benchmark output
 rate_distortion_curve.png

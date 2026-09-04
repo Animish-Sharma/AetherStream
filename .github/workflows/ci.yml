@@ -66,13 +66,13 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: python generate_assets.py
       - run: git diff --exit-code -- assets
-      - run: python -m ruff check benchmarks python generate_assets.py tests
-      - run: python -m black --check benchmarks python generate_assets.py tests
+      - run: python -m ruff check benchmarks python scripts generate_assets.py tests
+      - run: python -m black --check benchmarks python scripts generate_assets.py tests
       - run: python -m mypy benchmarks python generate_assets.py
       - name: Install pinned C++ formatter
         run: sudo apt-get update && sudo apt-get install -y clang-format-16
       - name: Check C++ formatting
-        run: find include src tests fuzz -type f \( -name '*.hpp' -o -name '*.cpp' \) -print0 | xargs -0 clang-format-16 --dry-run --Werror
+        run: find include src tests fuzz integrations -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.c' -o -name '*.cpp' \) -print0 | xargs -0 clang-format-16 --dry-run --Werror
       - run: mkdocs build --strict
 
   sanitizers-and-fuzz:

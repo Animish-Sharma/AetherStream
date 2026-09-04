@@ -1,6 +1,6 @@
 # AetherStream
 
-AetherStream compresses one-dimensional `float32` sensor data from C++20 or Python. It supports sequential streaming, indexed slices, fixed wire-rate targets, and pointwise absolute-error limits.
+AetherStream compresses one-dimensional `float32` sensor data from C++20, C, Go, Rust, or Python. It supports sequential streaming, indexed slices, fixed wire-rate targets, pointwise absolute-error limits, and compact TSDB chunks.
 
 **Version 0.0.1**
 
@@ -183,7 +183,7 @@ cmake --build build --parallel 1
 sudo cmake --install build
 ```
 
-Consumers can then use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and `aether::aether_core`.
+Consumers can then use `find_package(AetherStream 0.0.1 REQUIRED CONFIG)` and link `aether::aether_core`, `aether::aether_c`, `aether::aether_c_static`, or `aether::aether_tsdb`.
 
 ### vcpkg and Docker
 
@@ -231,6 +231,25 @@ int main() {
 ```
 
 See the **[API reference](docs/API_REFERENCE.md)** for exceptions, ownership, and streaming semantics.
+
+## C, Go, Rust, and TSDB integrations
+
+The stable ABI is declared in [`include/aether/c_api.h`](include/aether/c_api.h).
+It uses caller-owned buffers, opaque wire bytes, fixed status values, and catches
+all native exceptions at the C boundary. Go 1.22+ bindings are in
+[`bindings/go`](bindings/go), and the safe Rust crate is in
+[`bindings/rust`](bindings/rust).
+
+```bash
+cmake -S . -B build -DAETHER_BUILD_PYTHON=OFF -DAETHER_BUILD_TESTS=ON
+cmake --build build --parallel 1
+(cd bindings/go/aether && go test -v .)
+(cd bindings/rust && CARGO_BUILD_JOBS=1 cargo test)
+```
+
+The `aether::aether_tsdb` target parses InfluxDB line protocol and compacts
+Prometheus series chunks. Timestamps use delta-of-delta varints; values remain a
+standard AetherStream frame. See the [API reference](docs/API_REFERENCE.md#tsdb-bridge).
 
 ## Mathematical foundation
 
@@ -320,7 +339,7 @@ cmake --build build --parallel 1
 ctest --test-dir build --output-on-failure
 ```
 
-The local 0.0.1 candidate passed 15 Python tests, 7 native tests, and the same 7 tests under ASan/UBSan. Formatting, linting, type checking, strict documentation, Docker, external-consumer, packaging, and a 269,060-execution fuzz run also passed.
+Native C/C++, Python, Go, Rust, TSDB integration, sanitizer, and fuzz tests run in CI. The cross-platform matrix covers GCC, Clang, Apple Clang, and MSVC on Linux x86-64/aarch64, macOS Intel/Apple Silicon, and Windows x86-64. A versioned manifest verifies C ABI layout and exports.
 
 Sanitizer and fuzzing procedures are documented in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately according to [SECURITY.md](SECURITY.md). The normative interoperability contract is [Wire Format v6](docs/WIRE_FORMAT_SPEC.md), and maintainers should follow the [release checklist](docs/RELEASE_CHECKLIST.md).
 

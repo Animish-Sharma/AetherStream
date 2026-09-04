@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(AetherStream VERSION 0.0.1 LANGUAGES CXX)
+project(AetherStream VERSION 0.0.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -24,7 +24,9 @@ if(DEFINED ENV{AETHER_LOW_MEMORY} AND "$ENV{AETHER_LOW_MEMORY}" STREQUAL "0")
     set(AETHER_LOW_MEMORY OFF CACHE BOOL "Use the low-memory build profile" FORCE)
 endif()
 option(AETHER_BUILD_PYTHON "Build the pybind11 Python extension when pybind11 is available" ON)
-option(AETHER_BUILD_TESTS "Build native C++ tests" OFF)
+option(AETHER_BUILD_TESTS "Build native C and C++ tests" OFF)
+option(AETHER_BUILD_C_API "Build the stable C ABI as shared and static libraries" ON)
+option(AETHER_BUILD_TSDB_BRIDGE "Build the InfluxDB and Prometheus chunk bridge" ON)
 option(AETHER_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(AETHER_BUILD_FUZZERS "Build LLVM libFuzzer targets" OFF)
 
@@ -131,6 +133,8 @@ set_target_properties(
         INTERPROCEDURAL_OPTIMIZATION OFF
         WINDOWS_EXPORT_ALL_SYMBOLS ON
         POSITION_INDEPENDENT_CODE ON
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
         EXPORT_NAME aether_core
 )
 # Windows toolchains create an import library for the Python module. Give the
@@ -143,6 +147,58 @@ endif()
 if(AETHER_LIMIT_BUILD_PARALLELISM)
     set_property(TARGET aether_core PROPERTY JOB_POOL_COMPILE aether_compile_pool)
     set_property(TARGET aether_core PROPERTY JOB_POOL_LINK aether_link_pool)
+endif()
+
+if(AETHER_BUILD_C_API)
+    add_library(aether_c SHARED src/c_api.cpp)
+    add_library(aether_c_static STATIC src/c_api.cpp)
+    add_library(aether::aether_c ALIAS aether_c)
+    add_library(aether::aether_c_static ALIAS aether_c_static)
+    foreach(c_target aether_c aether_c_static)
+        target_link_libraries(${c_target} PRIVATE aether_core)
+        target_include_directories(${c_target}
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        )
+        target_compile_options(${c_target} PRIVATE
+            ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS})
+        set_target_properties(${c_target} PROPERTIES
+            INTERPROCEDURAL_OPTIMIZATION OFF
+            POSITION_INDEPENDENT_CODE ON)
+        if(AETHER_LIMIT_BUILD_PARALLELISM)
+            set_property(TARGET ${c_target} PROPERTY JOB_POOL_COMPILE aether_compile_pool)
+            set_property(TARGET ${c_target} PROPERTY JOB_POOL_LINK aether_link_pool)
+        endif()
+    endforeach()
+    target_compile_definitions(aether_c PRIVATE AETHER_C_BUILD)
+    target_compile_definitions(aether_c_static PUBLIC AETHER_C_STATIC)
+    set_target_properties(aether_c PROPERTIES OUTPUT_NAME aether_c VERSION ${PROJECT_VERSION}
+                          SOVERSION 1)
+    if(WIN32)
+        set_target_properties(aether_c_static PROPERTIES OUTPUT_NAME aether_c_static)
+    else()
+        set_target_properties(aether_c_static PROPERTIES OUTPUT_NAME aether_c)
+    endif()
+endif()
+
+if(AETHER_BUILD_TSDB_BRIDGE)
+    add_library(aether_tsdb STATIC integrations/tsdb/influx_line_codec.cpp)
+    add_library(aether::aether_tsdb ALIAS aether_tsdb)
+    target_link_libraries(aether_tsdb PUBLIC aether_core)
+    target_include_directories(aether_tsdb
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/integrations/tsdb>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/aether/tsdb>
+    )
+    target_compile_options(aether_tsdb PRIVATE
+        ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS})
+    set_target_properties(aether_tsdb PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF
+                          POSITION_INDEPENDENT_CODE ON)
+    if(AETHER_LIMIT_BUILD_PARALLELISM)
+        set_property(TARGET aether_tsdb PROPERTY JOB_POOL_COMPILE aether_compile_pool)
+        set_property(TARGET aether_tsdb PROPERTY JOB_POOL_LINK aether_link_pool)
+    endif()
 endif()
 
 if(AETHER_BUILD_PYTHON)
@@ -196,14 +252,45 @@ if(AETHER_BUILD_TESTS)
         endif()
         add_test(NAME ${test_name} COMMAND test_${test_name})
     endforeach()
+
+    if(AETHER_BUILD_C_API)
+        add_executable(test_c_api tests/test_c_api.c)
+        target_link_libraries(test_c_api PRIVATE aether_c)
+        if(MSVC)
+            target_compile_options(test_c_api PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(test_c_api PRIVATE -UNDEBUG)
+            target_link_libraries(test_c_api PRIVATE m)
+        endif()
+        add_test(NAME c_api COMMAND test_c_api)
+    endif()
+    if(AETHER_BUILD_TSDB_BRIDGE)
+        add_executable(test_tsdb_bridge integrations/tsdb/test_tsdb_bridge.cpp)
+        target_link_libraries(test_tsdb_bridge PRIVATE aether_tsdb)
+        target_compile_options(test_tsdb_bridge PRIVATE
+            ${AETHER_OPTIMIZATION_FLAGS} ${AETHER_WARNING_FLAGS})
+        if(MSVC)
+            target_compile_options(test_tsdb_bridge PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(test_tsdb_bridge PRIVATE -UNDEBUG)
+        endif()
+        add_test(NAME tsdb_bridge COMMAND test_tsdb_bridge)
+    endif()
 endif()
 
 if(AETHER_BUILD_FUZZERS)
     add_subdirectory(fuzz)
 endif()
 
+set(AETHER_INSTALL_TARGETS aether_core)
+if(AETHER_BUILD_C_API)
+    list(APPEND AETHER_INSTALL_TARGETS aether_c aether_c_static)
+endif()
+if(AETHER_BUILD_TSDB_BRIDGE)
+    list(APPEND AETHER_INSTALL_TARGETS aether_tsdb)
+endif()
 install(
-    TARGETS aether_core
+    TARGETS ${AETHER_INSTALL_TARGETS}
     EXPORT AetherStreamTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -211,6 +298,10 @@ install(
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 install(DIRECTORY include/aether DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(AETHER_BUILD_TSDB_BRIDGE)
+    install(FILES integrations/tsdb/influx_line_codec.hpp
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/aether/tsdb)
+endif()
 install(
     EXPORT AetherStreamTargets
     FILE AetherStreamTargets.cmake
