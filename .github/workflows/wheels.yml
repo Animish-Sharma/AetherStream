@@ -26,7 +26,7 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_ENVIRONMENT: "AETHER_LOW_MEMORY=1 CMAKE_BUILD_PARALLEL_LEVEL=1"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
@@ -40,7 +40,7 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install build scikit-build-core pybind11
       - run: python -m build --sdist --outdir dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
