@@ -2,7 +2,7 @@
 black>=24.0
 ruff>=0.6
 mypy>=1.10
-cmake>=3.18
+cmake>=4.4.3
 ninja>=1.11
 scikit-build-core>=0.10
 cibuildwheel>=2.20
