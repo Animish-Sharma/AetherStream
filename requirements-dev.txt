@@ -6,4 +6,4 @@ cmake>=3.18
 ninja>=1.11
 scikit-build-core>=0.10
 cibuildwheel>=2.20
-mkdocs-material>=9.5
+mkdocs-material>=9.7.7
